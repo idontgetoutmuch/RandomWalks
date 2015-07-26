@@ -6,6 +6,9 @@
 bibliography: Stochastic.bib
 ---
 
+Introduction
+============
+
 Suppose we wish to model a process described by a differential
 equation and initial condition
 
@@ -21,72 +24,67 @@ to this but maybe we can model the process discretely, add noise and
 somehow take limits.
 
 Let $\pi = \{0 = t_0 \leq t_1 \leq \ldots \leq t_n = t\}$ be a
-partition of $[0, t]$ then we can discretise the above and add in some
-noise which we model as samples of Brownian motion at the selected
-times multiplied by $b$ so that we can vary the amount noise depending
-on the time and the state.
+partition of $[0, t]$ then we can discretise the above, allow the
+state to be random and add in some noise which we model as samples of
+Brownian motion at the selected times multiplied by $b$ so that we can
+vary the amount noise depending on the state. We change
+the notation from $x$ to $X(\omega)$ to indicate that the variable is
+now random over some probability space although we suppress explicit
+mention of $\omega$ to avoid clutter.
 
 $$
-{x}_{t_{i+1}} - {x}_{t_i} = \sum_{i=0}^{n-1} a({x}_{t_i})(t_{i+1} - t_i) +
-                            \sum_{i=0}^{n-1} b({x}_{t_i})(W_{t_{i+1}} - W_{t_i})
+\begin{aligned}
+X_{t_0} &= X_{0} \\
+{X}_{t_{i+1}} - {X}_{t_i} &= a({X}_{t_i})(t_{i+1} - t_i) +
+                             b({X}_{t_i})(W_{t_{i+1}} - W_{t_i})
+\end{aligned}
 $$
 
-where $\xi_n \sim {\cal{N}}(0, \delta t)$. We would like to create a continuous model.
-One possibility is to write
+We can make this depend continuously on time specifying that
 
 $$
-X_t = \int_0^t x(s)\mathrm{d}s = \int_0^t a(s)\mathrm{d}s + W_t
+X_t = X_{t_i} \quad \mathrm{for} \, t \in (t_i, t_{i+1}]
 $$
 
-where $W_t$ is Brownian motion (which we define below). Even though
-Brownian motion is nowhere differentiable, we can adopt a convention
-that we can write this as
+and then telescoping to obtain
 
 $$
-\mathrm{d}X_t = a_t + \mathrm{d}W_t
+\begin{aligned}
+{X}_{t} &= X_0 + \sum_{i=0}^{k-1} a({X}_{t_i})(t_{i+1} - t_i) +
+                 \sum_{i=0}^{k-1} b({X}_{t_i})(W_{t_{i+1}} - W_{t_i})
+                 \quad \mathrm{for} \, t \in (t_k, t_{k+1}]
+\end{aligned}
 $$
 
+In the limit, the second term on the right looks like an ordinary
+integral with respect to time albeit the integrand is stochastic but
+what are we to make of the the third term? We know that Brownian
+motion is nowhere differentiable so it would seem the task is
+impossible. However, let us see what progress we can make with
+so-called simple proceses.
 
-Let $S$ an $T$ be stopping times and let the filtration on which they
-are defined be right continuous. Then
+Simple Processes
+================
 
-1. $S \land T = \min(S, T)$,
-2. $S \lor T = \max(S, T)$,
-3. $S + T$ and
-4. $\alpha T$
-
-are stopping times where $\alpha > 1$.
-
-For the first we have $\{S \land T \leq t\} = \{S \leq t\} \cup \{T
-\leq t\}$ and both the latter are in ${\mathcal{F}_t}$ by the definition
-of a [stopping time](http://en.wikipedia.org/wiki/Stopping_time).
-
-Similarly for the second $\{S \lor T \leq t\} = \{S \leq t\} \cap \{T
-\leq t\}$.
-
-For the fourth we have $\{\alpha T \leq t\} = \{T \leq \frac{t}{\alpha}\}
-\in {\mathcal{F}}_{t / \alpha} \subset {\mathcal{F}}_{t}$ since $\alpha > 1$.
-
-The third is slightly trickier. For $\omega \in \Omega$, $S(\omega)
-+T(\omega) < t$ if and only if for some rational $q$, we have
-$S(\omega) + T(\omega) < q < t$. We can thus we can find $r \in
-\mathbb{Q}$ such that $S(\omega) < r < q - T(\omega)$. Writing $s
-\triangleq q - r \in \mathbb{Q}$ we also have $T(\omega) < q - r =
-s$. Thus we have $S(\omega) + T(\omega) < t$ if and only if there
-exist $r, s \in \mathbb{Q}$ and $r, s > 0$ such that $r + s < t$ and
-$S(\omega) < r$ and $T(\omega) < s$. In other words
+Let
 
 $$
-\{S +T < t\} = \bigcup_{r, s \in \mathbb{Q}^+} (\{S < r\} \cap \{T < s\}
+X(t,\omega) = \sum_{i=0}^{k-1} B_i(\omega)\mathbb{I}_{(t_i, t_{i+1}]}(t)
 $$
 
-By right continuity [@protter2004stochastic Theorem 1] of the
-filtration, we know the terms on the right hand side are in
-${\mathcal{F}}_r \subset {\mathcal{F}}_t$ and ${\mathcal{F}}_s \subset
-{\mathcal{F}}_t$ so that the whole right hand side is in
-${\mathcal{F}}_t$. We thus know that the left hand side is in
-${\mathcal{F}}_t$ and using right continuity again that therefore $S +
-T$ must be a stopping time.
+where $B_i$ is ${\cal{F}}(t_i)$-measurable. We call such a proces
+*simple*. We can then define
+
+$$
+\int_0^\infty X(s) \mathrm{d}W(s) \triangleq \sum_{i=0}^{k-1} B_i{(W(t_{i+1}) - W(t_{i+1}))}
+$$
+
+So if we can produce a sequence of simple processes, $X_n$ that
+converge in some norm to $X$ then we can define
+
+$$
+\int_0^\infty \triangleq \lim_{n \to \infty}\int_0^\infty X_n(s)\mathrm{d}W(s)
+$$
 
 Bibliography
 ============

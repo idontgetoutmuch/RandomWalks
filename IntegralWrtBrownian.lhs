@@ -86,7 +86,7 @@ where $B_i$ is ${\cal{F}}(t_i)$-measurable. We call such a process
 *simple*. We can then define
 
 $$
-\int_0^\infty X(s) \mathrm{d}W(s) \triangleq \sum_{i=0}^{k-1} B_i{(W_{t_{i+1}} - W_{t_{i+1}})}
+\int_0^\infty X_s \mathrm{d}W_s \triangleq \sum_{i=0}^{k-1} B_i{(W_{t_{i+1}} - W_{t_{i+1}})}
 $$
 
 So if we can produce a sequence of simple processes, $X_n$ that
@@ -109,8 +109,11 @@ functions. More explicitly, we consider the latter class of stochastic
 processes such that
 
 $$
-\mathbb{E}\int_0^\infty X(s)\,\mathrm{d}s < \infty
+\mathbb{E}\int_0^\infty X^2_s\,\mathrm{d}s < \infty
 $$
+
+Less Simple Processes
+=====================
 
 Bounded, Almost Surely Continuous and Progressively Adapted
 -----------------------------------------------------------
@@ -138,7 +141,7 @@ Let $X$ be a bounded and progressively measurable process which is
 (almost surely) $0$ for $t > T$ for some positive constant $T$. Define
 
 $$
-X_n(s, \omega) \triangleq \frac{1}{1/n}\int_{s-1/n}^s X(t, \omega) \,\mathrm{d}t
+X_n(t, \omega) \triangleq \frac{1}{1/n}\int_{t-1/n}^t X(s, \omega) \,\mathrm{d}s
 $$
 
 Then $X^n(s, \omega)$ is bounded, continuous and progressively
@@ -152,7 +155,7 @@ $$
 Progressively Measurable
 ------------------------
 
-First, Let $X$ be a progressively measurable process which is (almost
+Firstly, let $X$ be a progressively measurable process which is (almost
 surely) $0$ for $t > T$ for some positive constant $T$. Define $X_n(t,
 \omega) = X(t, \omega) \land n$. Then $X_n$ is bounded and by
 dominated convergence
@@ -160,6 +163,53 @@ dominated convergence
 $$
 \lim_{n \to \infty}\|X - X_n\|_2 = 0
 $$
+
+Finally let $X$ be a progressively measurable process. Define
+
+$$
+\begin{equation}
+X_n(t, \omega) \triangleq
+\begin{cases}
+X(t, \omega) & \text{if } t \leq n \\
+0            & \text{if } \mathrm{otherwise}
+\end{cases}
+\end{equation}
+$$
+
+Clearly
+
+$$
+\lim_{n \to \infty}\|X - X_n\|_2 = 0
+$$
+
+The Itô Isometry
+====================
+
+Let $X$ be a simple process such that
+
+$$
+\mathbb{E}\int_0^\infty X^2_s\,\mathrm{d}s < \infty
+$$
+
+then
+
+$$
+\mathbb{E}\bigg(\int_0^\infty X_s\,\mathrm{d}W_s\bigg)^2 =
+\mathbb{E}\bigg(\sum_{i=0}^{k-1} B_i{(W_{t_{i+1}} - W_{t_{i}})}\bigg)^2 =
+\sum_{i=0}^{k-1} \mathbb{E}(B_i)^2({t_{i+1}} - {t_{i}}) =
+\mathbb{E}\int_0^\infty X^2_s\,\mathrm{d}s
+$$
+
+Now suppose that ${H_n}_{n \in \mathbb{N}}$ is a Cauchy sequence of
+progressively measurable simple functions in ${\cal{L}}^2(\mu \times
+\mathbb{P})$ then since the difference of two simple processes is again a simple process we can apply the Itô Isometry to deduce that
+
+$$
+\lim_{m,n \to \infty}\mathbb{E}\bigg(\int_0^\infty (H_n(s) - H_m(s))\,\mathrm{d}W(s)\bigg)^2 =
+\lim_{m,n \to \infty}\mathbb{E}\int_0^\infty (H_n(s) - H_m(s))^2\,\mathrm{d}s =
+0
+$$
+
 
 Notes
 =====

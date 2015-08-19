@@ -104,7 +104,8 @@ We consider the ${\cal{L}}^2(\mu \times \mathbb{P})$, the space of
 square integrable functions with respect to the product measure $\mu
 \otimes \mathbb{P}$ where $\mu$ is Lesbegue measure on
 ${\mathbb{R}^+}$ and $\mathbb{P}$ is some given probability
-measure. We further restrict ourselves to progressively measurable
+measure. We further restrict ourselves to [progressively
+measurable](http://mathoverflow.net/questions/176622/progressively-measurable-vs-adapted)
 functions. More explicitly, we consider the latter class of stochastic
 processes such that
 
@@ -167,13 +168,11 @@ $$
 Finally let $X$ be a progressively measurable process. Define
 
 $$
-\begin{equation}
 X_n(t, \omega) \triangleq
 \begin{cases}
 X(t, \omega) & \text{if } t \leq n \\
 0            & \text{if } \mathrm{otherwise}
 \end{cases}
-\end{equation}
 $$
 
 Clearly
@@ -200,7 +199,7 @@ $$
 \mathbb{E}\int_0^\infty X^2_s\,\mathrm{d}s
 $$
 
-Now suppose that ${H_n}_{n \in \mathbb{N}}$ is a Cauchy sequence of
+Now suppose that $\{H_n\}_{n \in \mathbb{N}}$ is a Cauchy sequence of
 progressively measurable simple functions in ${\cal{L}}^2(\mu \times
 \mathbb{P})$ then since the difference of two simple processes is again a simple process we can apply the Itô Isometry to deduce that
 
@@ -210,10 +209,32 @@ $$
 0
 $$
 
+In other words, $\int_0^\infty H_n(s)\,\mathrm{d}W(s)$ is also Cauchy
+in ${\cal{L}}^2(\mathbb{P})$ and since this is complete, we can conclude that
+
+$$
+\int_0^\infty X(s)\mathrm{d}W(s) \triangleq \lim_{n \to \infty}\int_0^\infty X_n(s)\mathrm{d}W(s)
+$$
+
+exists (in ${\cal{L}}^2(\mathbb{P})$). Uniqueness follows using the
+triangle inequality and the Itô isometry.
 
 Notes
 =====
 
+ 1. We defer proving the definition also makes sense almost surely to
+another blog post.
+
+ 2. This approach seems fairly standard see for example @VonHandel2007
+and @morters2010brownian.
+
+ 3. @rogers2000diffusions takes a more general approach.
+
+ 4. @protter2004stochastic takes a different approach by defining
+stochastic processes which are good integrators, a more abstract
+motivation than the one we give here.
+
+5. The requirement of progressive measurability can be relaxed.
 
 Bibliography
 ============

@@ -117,12 +117,25 @@ $M_t$ is a super-martingale and if further $\mathbb{E}M_T =
 **Proof**
 
 Let $\{\tau_n\}_{n \in \mathbb{N}}$ be a localizing sequence for $M_t$
-then for $0 < s < t < T$
+then for $0 < s < t < T$ and using [Fatou's
+lemma](http://math.stackexchange.com/questions/242920/tricks-to-remember-fatous-lemma)
+and the fact that the stopped process is a strict martingale
 
 $$
 \mathbb{E}(M_t \,|\, {\mathcal{F}_s}) =
-\mathbb{E}(\liminf)
+\mathbb{E}(\liminf_{n \rightarrow \infty} M_{t \land \tau_m} \,|\, {\mathcal{F}_s}) \leq
+\liminf_{n \rightarrow \infty} \mathbb{E}(M_{t \land \tau_m} \,|\, {\mathcal{F}_s}) =
+\liminf_{n \rightarrow \infty} M_{s \land \tau_m} = M_s
 $$
+
+Thus $M_t$ is a super-martingale and therefore
+
+$$
+\mathbb{E}M_T \leq \mathbb{E}M_t \leq \mathbb{E}M_s \leq \mathbb{E}M_0
+$$
+
+By assumption we have $\mathbb{E}M_T \leq \mathbb{E}M_0$ thus $M_t$ is
+a strict martingale.
 
 Notes
 =====

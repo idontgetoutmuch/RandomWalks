@@ -6,6 +6,18 @@
 bibliography: Stochastic.bib
 ---
 
+We previously used importance sampling in the case where we did not
+have a sampler available for the distribution from which we wished to
+sample. There is an even more compelling case for using importance sampling.
+
+Suppose we wish to estimate the probability of a rare event. For
+example, suppose we wish to estimate $\mathbb{P}(X > 5)$ where $X \sim
+{\mathcal{N}}(0,1)$. In this case, we can look up the answer
+$\mathbb{P}(X > 5) \approx 2.86710^{-7}$. But suppose we couldn't look
+up the answer. One strategy that might occur to us is to sample and
+then estimate the probability by counting the number of times out of
+the total that the sample was bigger than 5.
+
 If we have a probability space $(\Omega, {\mathcal{F}}, \mathbb{P})$ and a
 non-negative random variable $Z$ then we can define a new probability
 measure $\mathbb{Q}$ on the same $\sigma$-algebra by
@@ -50,7 +62,7 @@ Let $W_t$ be Brownian Motion on a probability space $(\Omega, \calF,
 \P)$ and let $\{\calF_t\}_{t \in [0,T]}$ be a filtration for this
 Brownian Motion and let $\gamma_t$ be an adapted process such that
 $$
-\EX{\exp (\frac{1}{2}\int_0^T \gamma_t^2\dif t)} < \infty 
+\EX{\exp (\frac{1}{2}\int_0^T \gamma_t^2\dif t)} < \infty
 $$
 then there exists a probability measure $\Q$ such that
 \begin{enumerate}
@@ -63,3 +75,59 @@ $\displaystyle {\frac{\dif \Q}{\dif \P} = \exp \Bigg(-\int_0^T \gamma_t \dif W_t
 $\tilde W_t = W_t + \int_0^t \gamma_s \dif s$ is Brownian Motion on the
 probabiity space $(\Omega, \calF, \Q)$ also with the filtration $\{\calF_t\}_{t \in [0,T]}$.
 \end{enumerate}
+
+The Novikov Sufficiency Condition
+=================================
+
+Let $X \in {\cal{L}}^2_{\mathrm{LOC}}[0,T]$ and further let it
+satisfy the [Novikov
+condition](https://en.wikipedia.org/wiki/Novikov%27s_condition)
+
+$$
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T X^2(s, \omega) \mathrm{d}s\bigg)}\bigg] < \infty
+$$
+
+then the process defined by
+
+$$
+M_t(X) = \exp{\bigg(\int_0^t X(t, \omega) \mathrm{d}W_s  -
+                      \frac{1}{2}\int_0^t X^2(t, \omega) \mathrm{d}s\bigg)}
+$$
+
+is a martingale.
+
+**Proof**
+
+Since $M_t$ is a local martingale (FIXME: we haven't defined this yet!), so is
+
+$$
+M_t(\sqrt{\alpha} X) = \exp{\bigg(\int_0^t \sqrt{\alpha} X(t, \omega) \mathrm{d}W_s  -
+                      \frac{1}{2}\int_0^t \alpha X^2(t, \omega) \mathrm{d}s\bigg)}
+$$
+
+for any $0 < \alpha < 1$.
+
+Lemma
+-----
+
+Let $M_t$ for $t \in [0,t]$ be a non-negative local martingale then
+$M_t$ is a super-martingale and if further $\mathbb{E}M_T =
+\mathbb{E}M_0$ then $M_t$ is a strict martingale.
+
+**Proof**
+
+Let $\{\tau_n\}_{n \in \mathbb{N}}$ be a localizing sequence for $M_t$
+then for $0 < s < t < T$
+
+$$
+\mathbb{E}(M_t \,|\, {\mathcal{F}_s}) =
+\mathbb{E}(\liminf)
+$$
+
+Notes
+=====
+
+We have already used [importance
+sampling](https://idontgetoutmuch.wordpress.com/2014/08/23/importance-sampling/)
+and also touched on [changes of
+measure](https://idontgetoutmuch.wordpress.com/2015/07/13/conditional-expectation-under-change-of-measure/).

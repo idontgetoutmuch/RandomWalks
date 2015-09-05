@@ -137,6 +137,30 @@ $$
 By assumption we have $\mathbb{E}M_T \leq \mathbb{E}M_0$ thus $M_t$ is
 a strict martingale.
 
+Lemma
+-----
+
+Let $M_t$ be a non-negative martingale. If $\{\tau_n\}_{n \in
+\mathbb{N}}$ is a localizing sequence such that $\sup_n \|M_{T \land
+\tau_n}\|_p < \infty$ for some $p > 1$ then $M_t$ is a strict martingale.
+
+**Proof**
+
+$$
+\mathbb{E}(|M_T - M_{T \land \tau_n}|) \leq
+\mathbb{E}(|M_T - r \land M_T) +
+\mathbb{E}(|r \land M_T - r \land M_{T \land \tau_n}|) +
+\mathbb{E}(M_{T \land \tau_n} - r \land M_{T \land \tau_n})
+$$
+
+By the super-martingale property $\mathbb{E}(M_T) < \mathbb{E}(M_0) <
+\infty$ and thus by bounded convergence we have that
+
+$$
+\lim_{r \rightarrow \infty} \mathbb{E}(r \land M_T) = \mathbb{E}(M_T) \quad \mathrm{and} \quad
+\lim_{r \rightarrow \infty}\lim_{n \rightarrow \infty}\mathbb{E}(|r \land M_T - r \land M_{T \land \tau_n}|) = 0
+$$
+
 Notes
 =====
 
@@ -144,3 +168,6 @@ We have already used [importance
 sampling](https://idontgetoutmuch.wordpress.com/2014/08/23/importance-sampling/)
 and also touched on [changes of
 measure](https://idontgetoutmuch.wordpress.com/2015/07/13/conditional-expectation-under-change-of-measure/).
+
+Bibliography
+============

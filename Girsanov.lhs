@@ -140,9 +140,10 @@ a strict martingale.
 Lemma
 -----
 
-Let $M_t$ be a non-negative martingale. If $\{\tau_n\}_{n \in
+Let $M_t$ be a non-negative local martingale. If $\{\tau_n\}_{n \in
 \mathbb{N}}$ is a localizing sequence such that $\sup_n \|M_{T \land
-\tau_n}\|_p < \infty$ for some $p > 1$ then $M_t$ is a strict martingale.
+\tau_n}\|_p < \infty$ for some $p > 1$ then $M_t$ is a strict
+martingale.
 
 **Proof**
 
@@ -153,21 +154,42 @@ $$
 \mathbb{E}(M_{T \land \tau_n} - r \land M_{T \land \tau_n})
 $$
 
-By the super-martingale property $\mathbb{E}(M_T) < \mathbb{E}(M_0) <
-\infty$ and thus by bounded convergence we have that
+By the super-martingale property $\mathbb{E}(M_T) \leq \mathbb{E}(M_0) <
+\infty$ and thus by dominated convergence we have that
 
 $$
 \lim_{r \rightarrow \infty} \mathbb{E}(r \land M_T) = \mathbb{E}(M_T) \quad \mathrm{and} \quad
 \lim_{r \rightarrow \infty}\lim_{n \rightarrow \infty}\mathbb{E}(|r \land M_T - r \land M_{T \land \tau_n}|) = 0
 $$
 
+We also have that
+
+$$
+\begin{aligned}
+\mathbb{E}(M_{T \land \tau_n} - r \land M_{T \land \tau_n}) &=
+\mathbb{E}((M_{T \land \tau_n} - r \land M_{T \land \tau_n}){I}_{(M_{T \land \tau_n} > r)}) +
+\mathbb{E}((M_{T \land \tau_n} - r \land M_{T \land \tau_n}){I}_{(M_{T \land \tau_n} \leq r)}) \\
+&= \mathbb{E}((M_{T \land \tau_n} - r \land M_{T \land \tau_n}){I}_{(M_{T \land \tau_n} > r)}) \\
+&= \mathbb{E}(M_{T \land \tau_n}{I}_{(M_{T \land \tau_n} > r)}) - r\mathbb{P}({M_{T \land \tau_n} > r})
+\end{aligned}
+$$
+
 Notes
 =====
 
-We have already used [importance
+1. We have already used [importance
 sampling](https://idontgetoutmuch.wordpress.com/2014/08/23/importance-sampling/)
 and also touched on [changes of
 measure](https://idontgetoutmuch.wordpress.com/2015/07/13/conditional-expectation-under-change-of-measure/).
+
+2. [Chebyshev's
+inequality](http://mathoverflow.net/questions/28296/analog-of-chebyshevs-inequality-for-higher-moments)
+is usually stated for the second moment but the proof is easily
+adapted:
+
+$$
+\mathbb P( |X| > u ) = \int 1_{|X| > u} ~d\mathbb P = \frac 1 {u^p} \int u^p 1_{|X| > u} ~d\mathbb P < \frac 1 {u^p} \int |X|^p 1_{|X| > u} ~ d\mathbb P \le \frac 1 {u^p} \mathbb E|X|^p.
+$$
 
 Bibliography
 ============

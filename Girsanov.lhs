@@ -174,6 +174,50 @@ $$
 \end{aligned}
 $$
 
+By Chebyshev's inequality (see note (2) below), we have
+
+$$
+r\mathbb{P}({M_{T \land \tau_n} > r}) \leq \frac{r\mathbb{E}|X|^p}{r^p} \leq
+\frac{\sup_n{\mathbb{E}(M_{T \land \tau_n})^p}}{r^{p-1}}
+$$
+
+Taking limits first over $n \rightarrow \infty$ and then over $r
+\rightarrow \infty$ we see that
+
+$$
+\lim_{r \rightarrow \infty}\lim_{n \rightarrow \infty} r\mathbb{P}({M_{T \land \tau_n} > r}) \rightarrow 0
+$$
+
+For $0 \leq r \leq x$ and $p > 1$ we have $x \leq r^{1-p}x^p$. Thus
+
+$$
+\mathbb{E}(M_{T \land \tau_n}{I}_{(M_{T \land \tau_n} > r)}) \leq
+r^{1-p}\mathbb{E}(M_{T \land \tau_n}^p{I}_{(M_{T \land \tau_n} > r)}) \leq
+r^{1-p}\sup_n(M_{T \land \tau_n}^p)
+$$
+
+Again taking limits over $n \rightarrow \infty$ and then over $r
+\rightarrow \infty$ we have
+
+$$
+\lim_{r \rightarrow \infty}\lim_{n \rightarrow \infty} \mathbb{E}(M_{T \land \tau_n}{I}_{(M_{T \land \tau_n} > r)}) \rightarrow 0
+$$
+
+These two conclusions imply
+
+$$
+\lim_{r \rightarrow \infty}\lim_{n \rightarrow \infty} \mathbb{E}(M_{T \land \tau_n} - r \land M_{T \land \tau_n}) \rightarrow 0
+$$
+
+We can therefore conclude (since $M_{T \land \tau_n}$ is a martingale)
+
+$$
+\mathbb{E}(M_T) = \lim_{n \rightarrow \infty}\mathbb{E}(M_{T \land \tau_n}) =
+\mathbb{E}(M_0)
+$$
+
+Thus by the preceeding lemma $M_t$ is a strict as well as a local martingale.
+
 Notes
 =====
 

@@ -280,8 +280,28 @@ $$
 \end{aligned}
 $$
 
+Now let us choose
 
+$$
+p\frac{\lambda - \lambda^2}{1 - p\lambda^2} = \frac{1}{2}
+$$
 
+then
+
+$$
+\begin{aligned}
+2p(\lambda - \lambda^2) &= 1 - p\lambda^2 \\
+p & = \frac{1}{2(\lambda - \lambda^2) + \lambda^2} \\
+p &= \frac{1}{(2 - \lambda)\lambda}
+\end{aligned}
+$$
+
+In order to apply Hölder's inequality we need to check that
+$(p\lambda^2)^{-1} > 1$ and that $(1 - p\lambda^2)^{-1} > 1$ but this
+amounts to checking that $p\lambda^2 > 0$ and that $1 > \lambda$. We
+also need to check that $p > 0$ but this amounts to checking that $(2
+- \lambda)\lambda < 1$ for $0 < \lambda < 1$ and this is easily
+checked to be true.
 
 
 Notes

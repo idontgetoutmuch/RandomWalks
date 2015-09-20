@@ -218,6 +218,72 @@ $$
 
 Thus by the preceeding lemma $M_t$ is a strict as well as a local martingale.
 
+The Novikov Sufficient Condition
+--------------------------------
+
+For any $\mu \in {\cal{L}}^2_{\mathrm{LOC}}[0,T]$ define the local
+martingale
+
+$$
+M_t(\mu) = \exp{\bigg(\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s -
+           \frac{1}{2}\int^0_t \mu^2(\omega, s)\,\mathrm{d}s\bigg)}
+$$
+
+and suppose that $\mu$ satisfies the Novikov condition
+
+$$
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^T_0 \mu^2(\omega, s)\,\mathrm{d}s\bigg)\bigg]} < \infty
+$$
+
+then $M_t(\mu)$ is a strict martingale.
+
+**Proof**
+
+Firstw e note that $M_t(\lambda\mu)$ is a local martingale for $0 <
+\lambda < 1$. Let us show that it is a strict martingale. We can
+do this if for any localizing sequence $\{\tau_n\}_{n \in \mathbb{N}}$
+we can show
+
+$$
+\sup_n\mathbb{E}(M_{T \land \tau_n}(\lambda\mu))^p < \infty
+$$
+
+using the preceeding lemma where $p > 1$.
+
+We note that
+
+$$
+\begin{aligned}
+M_t(\lambda\mu) &=
+\exp{\bigg(\int^t_0 \lambda\mu(\omega, s)\,\mathrm{d}W_s -
+\frac{1}{2}\int^t_0 \lambda^2\mu^2(\omega, s)\,\mathrm{d}s\bigg)} \\
+&= {(M_t(\mu))}^{\lambda^2}\exp{\bigg((\lambda - \lambda^2)\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}
+\end{aligned}
+$$
+
+Now apply Hölder's inequality with conjugates $({p\lambda^2})^{-1}$
+and $({1 - p\lambda^2})^{-1}$ where $p$ is chosen to ensure that the
+conjugates are both strictly greater than 1 (otherwise we cannot apply
+the inequality).
+
+$$
+\begin{aligned}
+\mathbb{E}((M_t(\lambda\mu))^p)
+&=
+\mathbb{E}\bigg[{(M_t(\mu))}^{p\lambda^2}\exp{\bigg(p(\lambda - \lambda^2)\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg] \\
+&\le
+\bigg|\bigg|{M_t(\mu)}^{p\lambda^2}\bigg|\bigg|_{p\lambda^2}
+\bigg|\bigg|\exp{\bigg(p(\lambda - \lambda^2)\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg|\bigg|_{1 - p\lambda^2} \\
+&=
+\mathbb{E}{\bigg[M_t(\mu)}\bigg]^{p\lambda^2}
+\mathbb{E}\bigg[\exp{\bigg(p\frac{\lambda - \lambda^2}{1 - p\lambda^2}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg]^{1 - p\lambda^2}
+\end{aligned}
+$$
+
+
+
+
+
 Notes
 =====
 

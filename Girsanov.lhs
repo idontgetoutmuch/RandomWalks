@@ -303,6 +303,34 @@ also need to check that $p > 0$ but this amounts to checking that $(2
 - \lambda)\lambda < 1$ for $0 < \lambda < 1$ and this is easily
 checked to be true.
 
+Re-writing the above inequality with this value of $p$ we have
+
+$$
+\begin{aligned}
+\mathbb{E}((M_t(\lambda\mu))^p)
+&\le
+\mathbb{E}{\bigg[M_t(\mu)}\bigg]^{p\lambda^2}
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg]^{1 - p\lambda^2}
+\end{aligned}
+$$
+
+By the first lemma, since $M_t(\mu)$ is a non-negative local
+martingale, it is also a supermartingale. Furthermore
+$\mathbb{E}(M_0(\mu)) = 1$. Thus
+
+$$
+\mathbb{E}{\bigg[M_t(\mu)}\bigg]^{p\lambda^2} \leq 1
+$$
+
+and therefore
+
+$$
+\begin{aligned}
+\mathbb{E}((M_t(\lambda\mu))^p)
+&\le
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg]^{1 - p\lambda^2}
+\end{aligned}
+$$
 
 Notes
 =====

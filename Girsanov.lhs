@@ -239,7 +239,7 @@ then $M_t(\mu)$ is a strict martingale.
 
 **Proof**
 
-Firstw e note that $M_t(\lambda\mu)$ is a local martingale for $0 <
+First we note that $M_t(\lambda\mu)$ is a local martingale for $0 <
 \lambda < 1$. Let us show that it is a strict martingale. We can
 do this if for any localizing sequence $\{\tau_n\}_{n \in \mathbb{N}}$
 we can show
@@ -332,6 +332,57 @@ $$
 \end{aligned}
 $$
 
+Recall we have
+
+$$
+{M_t} =
+\exp\bigg(
+\int_0^t \mu(\omega ,s)\mathrm{d}W_s - \frac{1}{2}\int_0^t \mu(\omega ,s)\mathrm{d}s
+\bigg)
+$$
+
+Taking logs gives
+
+$$
+\log{M_t} =
+\int_0^t \mu(\omega ,s)\mathrm{d}W_s - \frac{1}{2}\int_0^t \mu(\omega ,s)^2\mathrm{d}s
+$$
+
+or in diferential form
+
+$$
+\mathrm{d}(\log{M_t}) =
+\mu(\omega ,t)\mathrm{d}W_t - \frac{1}{2}\mu(\omega ,t)^2\mathrm{d}t
+$$
+
+We can also apply [Itô's
+rule](http://www.columbia.edu/~ks20/FE-Notes/4700-07-Notes-Ito.pdf)
+to $\log{M_t}$
+
+$$
+\begin{aligned}
+\mathrm{d}(\log{M_t})
+&= \frac{1}{M_t}\mathrm{d}M_t
+ - \frac{1}{2}\frac{1}{M_t^2}\mathrm{d}[M]_t \\
+\end{aligned}
+$$
+
+where $[\ldots]$ denotes the [quadratic
+variation](https://idontgetoutmuch.wordpress.com/2012/03/17/the-quadratic-variation-of-brownian-motion/)
+of a stochastic process.
+
+Comparing terms gives the stochastic differential equation
+
+$$
+\mathrm{d}M_t = M_t\mu(\omega,t)\mathrm{d}W_t
+$$
+
+In integral form this can also be written as
+
+$$
+M_t = 1 + \int_0^t M_s\mu(\omega, s)\mathrm{d}W_s
+$$
+
 Notes
 =====
 
@@ -348,6 +399,8 @@ adapted:
 $$
 \mathbb P( |X| > u ) = \int 1_{|X| > u} ~d\mathbb P = \frac 1 {u^p} \int u^p 1_{|X| > u} ~d\mathbb P < \frac 1 {u^p} \int |X|^p 1_{|X| > u} ~ d\mathbb P \le \frac 1 {u^p} \mathbb E|X|^p.
 $$
+
+3. We follow @VonHandel2007; a similar approach is given in @steele2001stochastic.
 
 Bibliography
 ============

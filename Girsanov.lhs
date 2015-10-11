@@ -55,8 +55,8 @@ This suggests that we ought to be able to \lq\lq shift\rq\rq\, Brownian
 Motion with a drift under a probability measure $\P$ to be pure
 Brownian Motion under another probability measure $\Q$.
 
-Girsanov Theorem Statement
---------------------------
+Girsanov's Theorem
+==================
 
 Let $W_t$ be Brownian Motion on a probability space $(\Omega, \calF,
 \P)$ and let $\{\calF_t\}_{t \in [0,T]}$ be a filtration for this
@@ -76,43 +76,47 @@ $\tilde W_t = W_t + \int_0^t \gamma_s \dif s$ is Brownian Motion on the
 probabiity space $(\Omega, \calF, \Q)$ also with the filtration $\{\calF_t\}_{t \in [0,T]}$.
 \end{enumerate}
 
+Before we prove Girsanov's Theorem, we need a condition which allows to
+infer that $M_t(\mu)$ is a strict martingale. One such useful
+condition is the Novikov Sufficiency Condition.
+
+Proof
+-----
+
+$\blacksquare$
+
 The Novikov Sufficiency Condition
 =================================
 
-Let $X \in {\cal{L}}^2_{\mathrm{LOC}}[0,T]$ and further let it
+The Novikov Sufficiency Condition Statement
+-------------------------------------------
+
+Let $\mu \in {\cal{L}}^2_{\mathrm{LOC}}[0,T]$ and further let it
 satisfy the [Novikov
 condition](https://en.wikipedia.org/wiki/Novikov%27s_condition)
 
 $$
-\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T X^2(s, \omega) \mathrm{d}s\bigg)}\bigg] < \infty
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T \mu^2(s, \omega) \mathrm{d}s\bigg)}\bigg] = K < \infty
 $$
 
 then the process defined by
 
 $$
-M_t(X) = \exp{\bigg(\int_0^t X(t, \omega) \mathrm{d}W_s  -
-                      \frac{1}{2}\int_0^t X^2(t, \omega) \mathrm{d}s\bigg)}
+M_t(\mu) = \exp{\bigg(\int_0^t \mu(t, \omega) \mathrm{d}W_s  -
+                      \frac{1}{2}\int_0^t \mu^2(t, \omega) \mathrm{d}s\bigg)}
 $$
 
-is a martingale.
+is a strict martingale.
 
-**Proof**
+Before we prove this, we need two lemmas.
 
-Since $M_t$ is a local martingale (FIXME: we haven't defined this yet!), so is
-
-$$
-M_t(\sqrt{\alpha} X) = \exp{\bigg(\int_0^t \sqrt{\alpha} X(t, \omega) \mathrm{d}W_s  -
-                      \frac{1}{2}\int_0^t \alpha X^2(t, \omega) \mathrm{d}s\bigg)}
-$$
-
-for any $0 < \alpha < 1$.
-
-Lemma
------
+Lemma 1
+-------
 
 Let $M_t$ for $t \in [0,t]$ be a non-negative local martingale then
 $M_t$ is a super-martingale and if further $\mathbb{E}M_T =
 \mathbb{E}M_0$ then $M_t$ is a strict martingale.
+
 
 **Proof**
 
@@ -137,8 +141,8 @@ $$
 By assumption we have $\mathbb{E}M_T \leq \mathbb{E}M_0$ thus $M_t$ is
 a strict martingale.
 
-Lemma
------
+Lemma 2
+-------
 
 Let $M_t$ be a non-negative local martingale. If $\{\tau_n\}_{n \in
 \mathbb{N}}$ is a localizing sequence such that $\sup_n \|M_{T \land
@@ -218,26 +222,10 @@ $$
 
 Thus by the preceeding lemma $M_t$ is a strict as well as a local martingale.
 
-The Novikov Sufficient Condition
---------------------------------
+$\blacksquare$
 
-For any $\mu \in {\cal{L}}^2_{\mathrm{LOC}}[0,T]$ define the local
-martingale
-
-$$
-M_t(\mu) = \exp{\bigg(\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s -
-           \frac{1}{2}\int^0_t \mu^2(\omega, s)\,\mathrm{d}s\bigg)}
-$$
-
-and suppose that $\mu$ satisfies the Novikov condition
-
-$$
-\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^T_0 \mu^2(\omega, s)\,\mathrm{d}s\bigg)\bigg]} = K < \infty
-$$
-
-then $M_t(\mu)$ is a strict martingale.
-
-**Proof**
+The Novikov Sufficiency Condition Proof
+---------------------------------------
 
 **Step 1 (Make me H4)**
 
@@ -470,8 +458,49 @@ Now we can apply the second lemma to conclude that $M_{T \land
 
 **Final Step (Make me H4)**
 
+We have already calculated that
 
+$$
+\begin{aligned}
+M_t(\lambda\mu) &=
+\exp{\bigg(\int^t_0 \lambda\mu(\omega, s)\,\mathrm{d}W_s -
+\frac{1}{2}\int^t_0 \lambda^2\mu^2(\omega, s)\,\mathrm{d}s\bigg)} \\
+&= {(M_t(\mu))}^{\lambda^2}\exp{\bigg((\lambda - \lambda^2)\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}
+\end{aligned}
+$$
 
+Now apply Hölder's inequality with conjugates $p = \lambda^{-2}$ and
+$q = (1 - \lambda^2)^{-1}$.
+
+$$
+1 = \mathbb{E}(M_t(\lambda\mu) \le
+\mathbb{E}(M_t(\mu))^{\lambda^2}\mathbb{E}{\bigg(}\exp{\bigg(\frac{\lambda}{1 + \lambda}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg)^{1 - \lambda^2}
+$$
+
+And then we can apply [Jensen's
+inequality](https://en.wikipedia.org/wiki/Jensen%27s_inequality) to
+the last term on the right hand side with the convex function $x^{(1 +
+\lambda)/2\lambda}$.
+
+$$
+1 \le
+\mathbb{E}(M_t(\mu))^{\lambda^2}
+\mathbb{E}{\bigg(}\exp{\bigg(\frac{1}{2}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg)^{2\lambda(1- \lambda)}
+$$
+
+Using the inequality we established in Step 2 and the Novikov
+condition then gives
+
+$$
+1 \le
+\mathbb{E}(M_t(\mu))^{\lambda^2}
+K^{\lambda(1 - \lambda)}
+$$
+
+If we now let $\lambda \nearrow 1$ we see that we must have $1 \le
+\mathbb{E}(M_t(\mu))$. We already now that $1 \ge
+\mathbb{E}(M_t(\mu))$ by the first lemma and so we have finally proved
+that $M_t(\mu)$ is a martingale.
 
 Notes
 =====

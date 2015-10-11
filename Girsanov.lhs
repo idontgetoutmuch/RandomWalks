@@ -232,12 +232,14 @@ $$
 and suppose that $\mu$ satisfies the Novikov condition
 
 $$
-\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^T_0 \mu^2(\omega, s)\,\mathrm{d}s\bigg)\bigg]} < \infty
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^T_0 \mu^2(\omega, s)\,\mathrm{d}s\bigg)\bigg]} = K < \infty
 $$
 
 then $M_t(\mu)$ is a strict martingale.
 
 **Proof**
+
+**Step 1 (Make me H4)**
 
 First we note that $M_t(\lambda\mu)$ is a local martingale for $0 <
 \lambda < 1$. Let us show that it is a strict martingale. We can
@@ -332,6 +334,8 @@ $$
 \end{aligned}
 $$
 
+**Step 2 (Make me H4)**
+
 Recall we have
 
 $$
@@ -382,6 +386,92 @@ In integral form this can also be written as
 $$
 M_t = 1 + \int_0^t M_s\mu(\omega, s)\mathrm{d}W_s
 $$
+
+Thus $M_t$ is a local martingale (it is defined by a stochastic
+differential equation) and by the first lemma it is a
+supermaringale. Hence $\mathbb{E}M_t \leq 1$.
+
+Next we note that
+
+$$
+\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t)\bigg)} =
+\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t) -
+     \frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s\bigg)}
+\exp{\bigg(\frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s\bigg)}
+$$
+
+to which we can apply Hölder's inequality with conjugates $p = q = 2$
+to obtain
+
+$$
+\begin{aligned}
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t)\bigg)}\bigg] &=
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t) -
+                           \frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                     \bigg)}
+                \exp{\bigg(\frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                     \bigg)}\bigg] \\
+& \leq
+\sqrt{\mathbb{E}\bigg[\exp{\bigg(\int_0^t \mu(\omega, t) -
+                           \frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                     \bigg)}\bigg]}
+\sqrt{\mathbb{E}\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                     \bigg)}\bigg]}
+\end{aligned}
+$$
+
+Applying the supermartingale inequality then gives
+
+$$
+\begin{aligned}
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t)\bigg)}\bigg]
+& \leq
+\sqrt{\mathbb{E}\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                     \bigg)}\bigg]}
+\end{aligned}
+$$
+
+**Step 3 (Make me H4)**
+
+Now we can apply the result in Step 2 to the result in Step 1.
+
+$$
+\begin{aligned}
+\mathbb{E}((M_t(\lambda\mu))^p)
+&\le
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg]^{1 - p\lambda^2} \\
+&\le
+{\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                      \bigg)}\bigg]}^{(1 - p\lambda^2)/2} \\
+&\le
+K^{(1 - p\lambda^2)/2}
+\end{aligned}
+$$
+
+We can replace $M_t$ by $M_t {\mathcal{I}}_{t < \tau}$ for any
+stopping time $\tau$. Thus for a localizing sequence we have
+
+$$
+\begin{aligned}
+\mathbb{E}((M_{t \land \tau_n}(\lambda\mu))^p)
+&\le
+K^{(1 - p\lambda^2)/2}
+\end{aligned}
+$$
+
+From which we can conclude
+
+$$
+\sup_n \|M_{T \land \tau_n}(\lambda\mu)\|_p < \infty
+$$
+
+Now we can apply the second lemma to conclude that $M_{T \land
+\tau_n}(\lambda\mu)$ is a strict martingale.
+
+**Final Step (Make me H4)**
+
+
+
 
 Notes
 =====

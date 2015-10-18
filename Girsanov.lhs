@@ -6,6 +6,9 @@
 bibliography: Stochastic.bib
 ---
 
+Introduction
+============
+
 We previously used importance sampling in the case where we did not
 have a sampler available for the distribution from which we wished to
 sample. There is an even more compelling case for using importance sampling.
@@ -58,30 +61,80 @@ Brownian Motion under another probability measure $\Q$.
 Girsanov's Theorem
 ==================
 
-Let $W_t$ be Brownian Motion on a probability space $(\Omega, \calF,
-\P)$ and let $\{\calF_t\}_{t \in [0,T]}$ be a filtration for this
-Brownian Motion and let $\gamma_t$ be an adapted process such that
-$$
-\EX{\exp (\frac{1}{2}\int_0^T \gamma_t^2\dif t)} < \infty
-$$
-then there exists a probability measure $\Q$ such that
-\begin{enumerate}
-\item
-$\Q$ is equivalent to $\P$;
-\item
-$\displaystyle {\frac{\dif \Q}{\dif \P} = \exp \Bigg(-\int_0^T \gamma_t \dif W_t -
-\frac{1}{2} \int_0^T \gamma^2_t \dif t\Bigg)}$;
-\item
-$\tilde W_t = W_t + \int_0^t \gamma_s \dif s$ is Brownian Motion on the
-probabiity space $(\Omega, \calF, \Q)$ also with the filtration $\{\calF_t\}_{t \in [0,T]}$.
-\end{enumerate}
+Let $W_t$ be Brownian Motion on a probability space $(\Omega, {\mathcal{F}},
+\mathbb{P})$ and let $\{{\mathcal{F}}_t\}_{t \in [0,T]}$ be a filtration for this
+Brownian Motion and let $\mu(\omega, t)$ be an adapted process such that the Novikov Sufficiency Condition holds
 
-Before we prove Girsanov's Theorem, we need a condition which allows to
-infer that $M_t(\mu)$ is a strict martingale. One such useful
-condition is the Novikov Sufficiency Condition.
+$$
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T \mu^2(s, \omega) \,\mathrm{d}s\bigg)}\bigg] = K < \infty
+$$
+
+then there exists a probability measure $\Q$ such that
+
+* $\Q$ is equivalent to $\P$;
+
+* $\displaystyle {\frac{\dif \Q}{\dif \P} = \exp \Bigg(-\int_0^T
+\gamma_t \dif W_t - \frac{1}{2} \int_0^T \gamma^2_t \dif t\Bigg)}$;
+
+* $\tilde W_t = W_t + \int_0^t \gamma_s \dif s$ is Brownian Motion on
+the probabiity space $(\Omega, \calF, \Q)$ also with the filtration
+$\{\calF_t\}_{t \in [0,T]}$.  \end{enumerate}
+
+Before we prove Girsanov's Theorem, we need a condition which allows
+to infer that $M_t(\mu)$ is a strict martingale. One such useful
+condition to which we have already alluded is the Novikov Sufficiency
+Condition.
 
 Proof
 -----
+
+Define $\mathbb{Q}$ by
+
+$$
+\mathbb{Q}(A) = \mathbb{P}(1_A M_T) \quad \mathrm{where} \quad
+M_t(\mu) = \exp{\bigg(\int_0^t - \mu(t, \omega) \,\mathrm{d}W_s  -
+                      \frac{1}{2}\int_0^t \mu^2(t, \omega) \,\mathrm{d}s\bigg)}
+$$
+
+Then, temporarily overloading the notation and writing $\mathbb{P}$
+for expectation under $\mathbb{P}$, and applying the Novikov
+Sufficiency Condition to $f(s) - \mu(\omega ,s)$, we have
+
+$$
+\begin{aligned}
+\mathbb{Q}\bigg[\exp{\int_0^T f(s) \,\mathrm{d}X_s}\bigg] &=
+\mathbb{Q}\bigg[\exp{\int_0^T f(s) \,\mathrm{d}W_s + \int_0^T \mu(\omega, s) \,\mathrm{d}s}\bigg] \\
+&=
+\mathbb{P}\bigg[\exp{\bigg(
+\int_0^T \big(f(s) - \mu(\omega, s)\big)\,\mathrm{d}W_s +
+\int_0^T f(s)\mu(\omega, s)\,\mathrm{d}s -
+\frac{1}{2}\int_0^T \mu^2(\omega ,s) \,\mathrm{d}s
+\bigg)}\bigg] \\
+&=
+\mathbb{P}\bigg[\exp{\bigg(
+\int_0^T \big(f(s) - \mu(\omega, s)\big)\,\mathrm{d}W_s -
+\frac{1}{2}\int_0^T \big(f(s) - \mu(\omega ,s)\big)^2 \,\mathrm{d}s +
+\frac{1}{2}\int_0^T f^2(s) \,\mathrm{d}s
+\bigg)}\bigg] \\
+&=
+\frac{1}{2}\int_0^T f^2(s) \,\mathrm{d}s
+\,
+\mathbb{P}\bigg[\exp{\bigg(
+\int_0^T \big(f(s) - \mu(\omega, s)\big)\,\mathrm{d}W_s -
+\frac{1}{2}\int_0^T \big(f(s) - \mu(\omega ,s)\big)^2 \,\mathrm{d}s
+\bigg)}\bigg] \\
+&=
+\frac{1}{2}\int_0^T f^2(s) \,\mathrm{d}s
+\end{aligned}
+$$
+
+From whence we see that
+
+$$
+\mathbb{Q}\big(e^{i \zeta (X_t - X_s)}\big) = e^{-\frac{1}{2} \zeta^2 (t - s)}
+$$
+
+And since this characterizes Brownian Motion, we are done.
 
 $\blacksquare$
 
@@ -96,14 +149,14 @@ satisfy the [Novikov
 condition](https://en.wikipedia.org/wiki/Novikov%27s_condition)
 
 $$
-\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T \mu^2(s, \omega) \mathrm{d}s\bigg)}\bigg] = K < \infty
+\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T \mu^2(s, \omega) \,\mathrm{d}s\bigg)}\bigg] = K < \infty
 $$
 
 then the process defined by
 
 $$
-M_t(\mu) = \exp{\bigg(\int_0^t \mu(t, \omega) \mathrm{d}W_s  -
-                      \frac{1}{2}\int_0^t \mu^2(t, \omega) \mathrm{d}s\bigg)}
+M_t(\mu) = \exp{\bigg(\int_0^t \mu(t, \omega) \,\mathrm{d}W_s  -
+                      \frac{1}{2}\int_0^t \mu^2(t, \omega) \,\mathrm{d}s\bigg)}
 $$
 
 is a strict martingale.
@@ -116,7 +169,6 @@ Lemma 1
 Let $M_t$ for $t \in [0,t]$ be a non-negative local martingale then
 $M_t$ is a super-martingale and if further $\mathbb{E}M_T =
 \mathbb{E}M_0$ then $M_t$ is a strict martingale.
-
 
 **Proof**
 
@@ -329,7 +381,7 @@ Recall we have
 $$
 {M_t} =
 \exp\bigg(
-\int_0^t \mu(\omega ,s)\mathrm{d}W_s - \frac{1}{2}\int_0^t \mu(\omega ,s)\mathrm{d}s
+\int_0^t \mu(\omega ,s)\,\mathrm{d}W_s - \frac{1}{2}\int_0^t \mu(\omega ,s)\,\mathrm{d}s
 \bigg)
 $$
 
@@ -337,14 +389,14 @@ Taking logs gives
 
 $$
 \log{M_t} =
-\int_0^t \mu(\omega ,s)\mathrm{d}W_s - \frac{1}{2}\int_0^t \mu(\omega ,s)^2\mathrm{d}s
+\int_0^t \mu(\omega ,s)\,\mathrm{d}W_s - \frac{1}{2}\int_0^t \mu(\omega ,s)^2\,\mathrm{d}s
 $$
 
 or in diferential form
 
 $$
 \mathrm{d}(\log{M_t}) =
-\mu(\omega ,t)\mathrm{d}W_t - \frac{1}{2}\mu(\omega ,t)^2\mathrm{d}t
+\mu(\omega ,t)\,\mathrm{d}W_t - \frac{1}{2}\mu(\omega ,t)^2\,\mathrm{d}t
 $$
 
 We can also apply [Itô's
@@ -354,8 +406,8 @@ to $\log{M_t}$
 $$
 \begin{aligned}
 \mathrm{d}(\log{M_t})
-&= \frac{1}{M_t}\mathrm{d}M_t
- - \frac{1}{2}\frac{1}{M_t^2}\mathrm{d}[M]_t \\
+&= \frac{1}{M_t}\,\mathrm{d}M_t
+ - \frac{1}{2}\frac{1}{M_t^2}\,\mathrm{d}[M]_t \\
 \end{aligned}
 $$
 
@@ -366,13 +418,13 @@ of a stochastic process.
 Comparing terms gives the stochastic differential equation
 
 $$
-\mathrm{d}M_t = M_t\mu(\omega,t)\mathrm{d}W_t
+\mathrm{d}M_t = M_t\mu(\omega,t)\,\mathrm{d}W_t
 $$
 
 In integral form this can also be written as
 
 $$
-M_t = 1 + \int_0^t M_s\mu(\omega, s)\mathrm{d}W_s
+M_t = 1 + \int_0^t M_s\mu(\omega, s)\,\mathrm{d}W_s
 $$
 
 Thus $M_t$ is a local martingale (it is defined by a stochastic
@@ -384,8 +436,8 @@ Next we note that
 $$
 \exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t)\bigg)} =
 \exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t) -
-     \frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s\bigg)}
-\exp{\bigg(\frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s\bigg)}
+     \frac{1}{4}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s\bigg)}
+\exp{\bigg(\frac{1}{4}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s\bigg)}
 $$
 
 to which we can apply Hölder's inequality with conjugates $p = q = 2$
@@ -395,15 +447,15 @@ $$
 \begin{aligned}
 \mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t)\bigg)}\bigg] &=
 \mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t) -
-                           \frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                           \frac{1}{4}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s
                      \bigg)}
-                \exp{\bigg(\frac{1}{4}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                \exp{\bigg(\frac{1}{4}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s
                      \bigg)}\bigg] \\
 & \leq
 \sqrt{\mathbb{E}\bigg[\exp{\bigg(\int_0^t \mu(\omega, t) -
-                           \frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+                           \frac{1}{2}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s
                      \bigg)}\bigg]}
-\sqrt{\mathbb{E}\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+\sqrt{\mathbb{E}\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s
                      \bigg)}\bigg]}
 \end{aligned}
 $$
@@ -414,7 +466,7 @@ $$
 \begin{aligned}
 \mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu(\omega, t)\bigg)}\bigg]
 & \leq
-\sqrt{\mathbb{E}\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+\sqrt{\mathbb{E}\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s
                      \bigg)}\bigg]}
 \end{aligned}
 $$
@@ -429,7 +481,7 @@ $$
 &\le
 \mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int^t_0 \mu(\omega, s)\,\mathrm{d}W_s\bigg)}\bigg]^{1 - p\lambda^2} \\
 &\le
-{\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \mathrm{d}s
+{\mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^t \mu^2(\omega, t) \,\mathrm{d}s
                       \bigg)}\bigg]}^{(1 - p\lambda^2)/2} \\
 &\le
 K^{(1 - p\lambda^2)/2}

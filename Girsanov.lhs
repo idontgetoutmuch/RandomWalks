@@ -58,12 +58,38 @@ This suggests that we ought to be able to \lq\lq shift\rq\rq\, Brownian
 Motion with a drift under a probability measure $\P$ to be pure
 Brownian Motion under another probability measure $\Q$.
 
+> import qualified Data.Vector as V
+> import Data.Random.Source.PureMT
+> import Data.Random
+> import Control.Monad.State
+> import Data.Histogram.Fill
+> import Data.Histogram.Generic ( Histogram )
+
+> epsilons :: (Foldable f, MonadRandom m) =>
+>                     (Int -> RVar Double -> RVar (f Double)) ->
+>                     Double ->
+>                     Int ->
+>                     m (f Double)
+> epsilons repM deltaT n = sample $ repM n $ rvar (Normal 0.0 (sqrt deltaT))
+
+> bM0to1 :: Foldable f =>
+>           ((Double -> Double -> Double) -> Double -> f Double -> f Double)
+>           -> (Int -> RVar Double -> RVar (f Double))
+>           -> Int
+>           -> Int
+>           -> f Double
+> bM0to1 scan repM seed n =
+>   scan (+) 0.0 $
+>   evalState (epsilons repM (recip $ fromIntegral n) n) (pureMT (fromIntegral seed))
+
 Girsanov's Theorem
 ==================
 
-Let $W_t$ be Brownian Motion on a probability space $(\Omega, {\mathcal{F}},
-\mathbb{P})$ and let $\{{\mathcal{F}}_t\}_{t \in [0,T]}$ be a filtration for this
-Brownian Motion and let $\mu(\omega, t)$ be an adapted process such that the Novikov Sufficiency Condition holds
+Let $W_t$ be Brownian Motion on a probability space $(\Omega,
+{\mathcal{F}}, \mathbb{P})$ and let $\{{\mathcal{F}}_t\}_{t \in
+[0,T]}$ be a filtration for this Brownian Motion and let $\mu(\omega,
+t)$ be an adapted process such that the Novikov Sufficiency Condition
+holds
 
 $$
 \mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T \mu^2(s, \omega) \,\mathrm{d}s\bigg)}\bigg] = K < \infty

@@ -58,6 +58,8 @@ This suggests that we ought to be able to \lq\lq shift\rq\rq\, Brownian
 Motion with a drift under a probability measure $\P$ to be pure
 Brownian Motion under another probability measure $\Q$.
 
+> module Girsanov where
+
 > import qualified Data.Vector as V
 > import Data.Random.Source.PureMT
 > import Data.Random
@@ -81,6 +83,10 @@ Brownian Motion under another probability measure $\Q$.
 > bM0to1 scan repM seed n =
 >   scan (+) 0.0 $
 >   evalState (epsilons repM (recip $ fromIntegral n) n) (pureMT (fromIntegral seed))
+
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/BrownianPaths.png") 600 600 (translationX 0.0))
+```
 
 Girsanov's Theorem
 ==================

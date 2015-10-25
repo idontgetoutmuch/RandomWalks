@@ -21,16 +21,24 @@ denv :: DEnv Double
 denv = unsafePerformIO $ defaultEnv vectorAlignmentFns 600 500
 
 diag :: String ->
+        [(Double, Double)] ->
         [[(Double, Double)]] ->
         Diagram Cairo
-diag t xss =
-  fst $ runBackend denv (render (chart t xss) (600, 500))
+diag t l xss =
+  fst $ runBackend denv (render (chart t l xss) (600, 500))
 
 chart :: String ->
+         [(Double, Double)] ->
          [[(Double, Double)]] ->
          Renderable ()
-chart t obss = toRenderable layout
+chart t l obss = toRenderable layout
   where
+
+    boundry = plot_lines_values .~ [l]
+              $ plot_lines_style  . line_color .~ opaque red
+              $ plot_lines_title .~ "Boundary"
+              $ plot_lines_style  . line_width .~ 1.0
+              $ def
 
     actuals = plot_lines_values .~ obss
               $ plot_lines_style  . line_color .~ opaque blue
@@ -39,7 +47,7 @@ chart t obss = toRenderable layout
               $ def
 
     layout = layout_title .~ t
-           $ layout_plots .~ [toPlot actuals]
+           $ layout_plots .~ [toPlot actuals, toPlot boundry]
            $ layout_y_axis . laxis_title .~ "Value"
            $ layout_y_axis . laxis_override .~ axisGridHide
            $ layout_x_axis . laxis_title .~ "Time"

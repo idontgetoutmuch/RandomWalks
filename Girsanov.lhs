@@ -19,44 +19,8 @@ example, suppose we wish to estimate $\mathbb{P}(X > 5)$ where $X \sim
 $\mathbb{P}(X > 5) \approx 2.86710^{-7}$. But suppose we couldn't look
 up the answer. One strategy that might occur to us is to sample and
 then estimate the probability by counting the number of times out of
-the total that the sample was bigger than 5.
-
-If we have a probability space $(\Omega, {\mathcal{F}}, \mathbb{P})$ and a
-non-negative random variable $Z$ then we can define a new probability
-measure $\mathbb{Q}$ on the same $\sigma$-algebra by
-$$
-\mathbb{Q} A \triangleq \int_A Z \,\mathrm{d} \mathbb{P}
-$$
-For any two probability measures when such a $Z$ exists, it is called
-the Radon-Nikod\'ym derivative of $\Q$ with respect to $\P$ and
-denoted $\frac{\dif \Q}{\dif \P}$
-
-An Example
-----------
-
-Let $\xi$ be a normally distributed random variable with zero mean and
-unit variance under a probability measure $\P$ and let $\xi' = a + \xi$. Then if we set
-$$
-\zeta = e^{-a\xi - \frac{a^2}{2}}
-$$
-and calculate
-\begin{align*}
-\Q \{\xi' \le b\} &= \int_{\{\xi' \le b\}} \zeta \dif\P \\
-                  &= \int_{\{\xi \le b - a\}} e^{-\xi a -
-                  \frac{a^2}{2}} \dif\P \\
-                  &= \frac{1}{\sqrt{2\pi}} \int_{-\infty}^{b - a} e^{-xa -
-                  \frac{a^2}{2}} e^{\frac{-x^2}{2}} \dif x \\
-                  &= \frac{1}{\sqrt{2\pi}} \int_{-\infty}^{b - a}
-                  e^{-(x+a)^2} \dif x \\
-                  &= \frac{1}{\sqrt{2\pi}} \int_{-\infty}^b
-                  e^{-y^2} \dif y
-\end{align*}
-We have that $\xi'$ is a normal random variable with zero mean and unit
-variance under the probability measure $\Q$.
-
-This suggests that we ought to be able to \lq\lq shift\rq\rq\, Brownian
-Motion with a drift under a probability measure $\P$ to be pure
-Brownian Motion under another probability measure $\Q$.
+the total that the sample was bigger than 5. The flaw in this is
+obvious but let's try it anyway.
 
 > module Girsanov where
 
@@ -66,6 +30,93 @@ Brownian Motion under another probability measure $\Q$.
 > import Control.Monad.State
 > import Data.Histogram.Fill
 > import Data.Histogram.Generic ( Histogram )
+> import Data.Number.Erf
+
+> samples :: (Foldable f, MonadRandom m) =>
+>                     (Int -> RVar Double -> RVar (f Double)) ->
+>                     Int ->
+>                     m (f Double)
+> samples repM n = sample $ repM n $ stdNormal
+
+> biggerThan5 :: Int
+> biggerThan5 = length (evalState xs (pureMT 42))
+>   where
+>     xs :: MonadRandom m => m [Double]
+>     xs = liftM (filter (>= 5.0)) $ samples replicateM 100000
+
+As we might have expected, even if we draw 100,000 samples, we
+estimate this probability quite poorly.
+
+    [ghci]
+    biggerThan5
+
+Using importance sampling we can do a lot better.
+
+Let $\xi$ be a normally distributed random variable with zero mean and
+unit variance under the Lebesgue measure $\mathbb{P}$. As usual we
+can then define a new probability measure, the law of $\xi$, by
+
+$$
+\begin{aligned}
+\mathbb{P}_\xi((-\infty, b])
+&= \frac{1}{\sqrt{2\pi}}\int_{-\infty}^b e^{-x^2/2}\,\mathrm{d}x
+\end{aligned}
+$$
+
+Thus
+
+$$
+\begin{aligned}
+\mathbb{E}_\xi(f) &= \frac{1}{\sqrt{2\pi}}\int_{-\infty}^\infty f(x) e^{-x^2/2}\,\mathrm{d}x \\
+&= \frac{1}{\sqrt{2\pi}}\int_{-\infty}^\infty f(x) e^{a^2/2}e^{-a x}e^{-(x-a)^2/2}\,\mathrm{d}x \\
+&= \mathbb{E}_{\xi + a}(fg) \\
+&= \mathbb{\tilde{E}}_{\xi + a}(f)
+\end{aligned}
+$$
+
+where we have defined
+
+$$
+g(x) \triangleq e^{a^2/2}e^{-a x}
+\quad \mathrm{and} \quad
+\mathbb{\tilde{P}}((-\infty, b]) \triangleq \int_{-\infty}^b g(x)\,\mathrm{d}x
+$$
+
+Thus we can estimate $\mathbb{P}(X > 5)$ either by sampling from a
+normal distribution with mean 0 and counting the number of samples
+that are above 5 *or* we can sample from a normal distribution with
+mean 5 and calculating the appropriately weighted mean
+
+$$
+\frac{1}{n}\sum_{i=1}^n \mathbb{I}_{\{x > 5\}}g(y)
+$$
+
+Let's try this out.
+
+> biggerThan5' :: Double
+> biggerThan5' = sum (evalState xs (pureMT 42)) / (fromIntegral n)
+>   where
+>     xs :: MonadRandom m => m [Double]
+>     xs = liftM (map g) $
+>          liftM (filter (>= 5.0)) $
+>          liftM (map (+5)) $
+>          samples replicateM n
+>     g x = exp $ (5^2 / 2) - 5 * x
+>     n = 100000
+
+
+And now we get quite a good estimate.
+
+    [ghci]
+    biggerThan5'
+
+Random Paths
+------------
+
+The probability of another rare event we might wish to estimate is
+that of Brownian Motion crossing a sloping boundary. For example, what
+is the probability of Browian Motion crossing the line $y = 2x + 2$?
+Let's try sampling 100 paths.
 
 > epsilons :: (Foldable f, MonadRandom m) =>
 >                     (Int -> RVar Double -> RVar (f Double)) ->
@@ -84,9 +135,61 @@ Brownian Motion under another probability measure $\Q$.
 >   scan (+) 0.0 $
 >   evalState (epsilons repM (recip $ fromIntegral n) n) (pureMT (fromIntegral seed))
 
+We can see by eye in the chart below that again we do quite poorly.
+
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/BrownianPaths.png") 600 600 (translationX 0.0))
 ```
+
+We know that $\mathbb{P}(T_a \leq t) = 2(1 - \Phi (a / \sqrt{t}))$
+where $T_a = \inf \{t : W_t = a\}$.
+
+> p :: Double -> Double -> Double
+> p a t = 2 * (1 - normcdf (a / sqrt t))
+
+    [ghci]
+    p 2 1
+
+We can also estimate this by direct simulation.
+
+> supAbove2 :: Double
+> supAbove2 = fromIntegral count / fromIntegral n
+>   where
+>     count = length $
+>             filter (>= 2) $
+>             map (\seed -> maximum $ bM0to1 scanl replicateM seed 1000) [0..n - 1]
+>     n = 10000
+
+Not brilliant but not too bad.
+
+    [ghci]
+    supAbove2
+
+In General
+----------
+
+If we have a probability space $(\Omega, {\mathcal{F}}, \mathbb{P})$
+and a non-negative random variable $Z$ with $\mathbb{E}Z = 1$ then we
+can define a new probability measure $\mathbb{Q}$ on the same
+$\sigma$-algebra by
+
+$$
+\mathbb{Q} A \triangleq \int_A Z \,\mathrm{d} \mathbb{P}
+$$
+
+For any two probability measures when such a $Z$ exists, it is called
+the
+[Radon-Nikodym](https://en.wikipedia.org/wiki/Radon%E2%80%93Nikodym_theorem)
+derivative of $\mathbb{Q}$ with respect to $\mathbb{P}$ and denoted
+$\frac{\mathrm{d} \mathbb{Q}}{\mathrm{d} \mathbb{P}}$
+
+Given that we managed to \lq\lq shift\rq\rq\ a Normal Distribution with
+non-zero mean in one measure to a Normal Distribution with another
+mean in another measure by producing the Radon-Nikodym derivative,
+might it be possible to \lq\lq shift\rq\rq\, Brownian Motion with a
+drift under a one probability measure to be pure Brownian Motion under
+another probability measure by producing the Radon-Nikodym derivative?
+The answer is yes as Girsanov's theorem below shows.
 
 Girsanov's Theorem
 ==================
@@ -101,18 +204,19 @@ $$
 \mathbb{E}\bigg[\exp{\bigg(\frac{1}{2}\int_0^T \mu^2(s, \omega) \,\mathrm{d}s\bigg)}\bigg] = K < \infty
 $$
 
-then there exists a probability measure $\Q$ such that
+then there exists a probability measure $\mathbb{Q}$ such that
 
-* $\Q$ is equivalent to $\P$;
+* $\mathbb{Q}$ is equivalent to $\mathbb{P}$, that is, $\mathbb{Q}(A)
+= 0 \iff \mathbb{P}(A) = 0$.
 
-* $\displaystyle {\frac{\dif \Q}{\dif \P} = \exp \Bigg(-\int_0^T
-\gamma_t \dif W_t - \frac{1}{2} \int_0^T \gamma^2_t \dif t\Bigg)}$;
+* $\displaystyle {\frac{\mathrm{d}\mathbb{Q}}{\mathrm{d}\mathbb{P}} = \exp \Bigg(-\int_0^T
+\mu(\omega,t) \,\mathrm{d}W_t - \frac{1}{2} \int_0^T \mu^2(\omega, t) \,\mathrm{d} t\Bigg)}$.
 
-* $\tilde W_t = W_t + \int_0^t \gamma_s \dif s$ is Brownian Motion on
-the probabiity space $(\Omega, \calF, \Q)$ also with the filtration
-$\{\calF_t\}_{t \in [0,T]}$.  \end{enumerate}
+* $\tilde W_t = W_t + \int_0^t \mu(\omega, t) \,\mathrm{d}s$ is Brownian Motion on
+the probabiity space $(\Omega, {\mathcal{F}}, \mathbb{Q})$ also with the filtration
+$\{\mathcal{F}_t\}_{t \in [0,T]}$.
 
-Before we prove Girsanov's Theorem, we need a condition which allows
+In order to prove Girsanov's Theorem, we need a condition which allows
 to infer that $M_t(\mu)$ is a strict martingale. One such useful
 condition to which we have already alluded is the Novikov Sufficiency
 Condition.
@@ -224,6 +328,8 @@ $$
 
 By assumption we have $\mathbb{E}M_T \leq \mathbb{E}M_0$ thus $M_t$ is
 a strict martingale.
+
+\blacksquare
 
 Lemma 2
 -------
@@ -585,6 +691,8 @@ If we now let $\lambda \nearrow 1$ we see that we must have $1 \le
 \mathbb{E}(M_t(\mu))$. We already now that $1 \ge
 \mathbb{E}(M_t(\mu))$ by the first lemma and so we have finally proved
 that $M_t(\mu)$ is a martingale.
+
+\blacksquare
 
 Notes
 =====

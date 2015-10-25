@@ -29,5 +29,6 @@ main = do
   let sims = map (\seed -> bM0to1 scanl replicateM seed 1000) [0..99]
   displayHeader "diagrams/BrownianPaths.png"
                 (diag "Sample Paths for Brownian Motion"
+                 (let ls = [0..1000 - 1] in zip ls (map (\x -> x*2e-3 + 2) ls) )
                  (map (zip [0..]) sims))
   putStrLn "hello"

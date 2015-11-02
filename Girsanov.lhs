@@ -31,6 +31,7 @@ obvious but let's try it anyway.
 > import Data.Histogram.Fill
 > import Data.Histogram.Generic ( Histogram )
 > import Data.Number.Erf
+> import Data.List ( transpose )
 
 > samples :: (Foldable f, MonadRandom m) =>
 >                     (Int -> RVar Double -> RVar (f Double)) ->
@@ -114,9 +115,10 @@ Random Paths
 ------------
 
 The probability of another rare event we might wish to estimate is
-that of Brownian Motion crossing a sloping boundary. For example, what
-is the probability of Browian Motion crossing the line $y = 2x + 2$?
-Let's try sampling 100 paths.
+that of Brownian Motion crossing a boundary. For example, what is the
+probability of Browian Motion crossing the line $y = 3.5$?  Let's try
+sampling 100 paths (we restrict the number so the chart is still
+readable).
 
 > epsilons :: (Foldable f, MonadRandom m) =>
 >                     (Int -> RVar Double -> RVar (f Double)) ->
@@ -148,22 +150,119 @@ where $T_a = \inf \{t : W_t = a\}$.
 > p a t = 2 * (1 - normcdf (a / sqrt t))
 
     [ghci]
-    p 2 1
+    p 1.0 1.0
+    p 2.0 1.0
+    p 3.0 1.0
 
-We can also estimate this by direct simulation.
+But what if we didn't know this formula? Define
 
-> supAbove2 :: Double
-> supAbove2 = fromIntegral count / fromIntegral n
+$$
+N(\omega) \triangleq
+\begin{cases}
+1 & \text{if } \sup_{0 \leq t \leq 1}\tilde W_t \geq a \\
+0 & \text{if } \sup_{0 \leq t \leq 1}\tilde W_t \lt a \\
+\end{cases}
+$$
+
+where $\mathbb{Q}$ is the measure which makes $\tilde W_t$ Brownian
+Motion.
+
+We can estimate the expectation of $N$
+
+$$
+\hat p_{\mathbb{Q}} = \frac{1}{M}\sum_{i=1}^H n_i
+$$
+
+where $n_i$ is 1 if Brownian Motion hits the barrier and 0 otherwise
+and M is the total number of simulations. We know from visual
+inspection that this gives poor results but let us try some
+calculations anyway.
+
+> n = 500
+> m = 10000
+
+> supAbove :: Double -> Double
+> supAbove a = fromIntegral count / fromIntegral n
 >   where
 >     count = length $
->             filter (>= 2) $
->             map (\seed -> maximum $ bM0to1 scanl replicateM seed 1000) [0..n - 1]
->     n = 10000
+>             filter (>= a) $
+>             map (\seed -> maximum $ bM0to1 scanl replicateM seed m) [0..n - 1]
 
-Not brilliant but not too bad.
+
+> bM0to1WithDrift seed mu n =
+>   zipWith (\m x -> x + mu * m * deltaT) [0..] $
+>   bM0to1 scanl replicateM seed n
+>     where
+>       deltaT = recip $ fromIntegral n
 
     [ghci]
-    supAbove2
+    supAbove 1.0
+    supAbove 2.0
+    supAbove 3.0
+
+As expected for a rare event we get an estimate of 0.
+
+Fortunately we can use importance sampling for paths. If we take
+$\mu(\omega, t) = a$ where $a$ is a constant in Girsanov's Theorem
+below then we know that $\tilde W_t = W_t + \int_0^t a \,\mathrm{d}s =
+W_t + at$ is $\mathbb{Q}$-Brownian Motion.
+
+We observe that
+
+$$
+\begin{aligned}
+\mathbb{Q}N &= \mathbb{P}\bigg(N\frac{\mathrm{d} \mathbb{Q}}{\mathrm{d} \mathbb{P}}\bigg) \\
+&=
+\mathbb{P}\Bigg[N
+\exp \Bigg(-\int_0^1
+\mu(\omega,t) \,\mathrm{d}W_t - \frac{1}{2} \int_0^1 \mu^2(\omega, t) \,\mathrm{d} t\Bigg)
+\Bigg] \\
+&=
+\mathbb{P}\Bigg[N
+\exp \Bigg(-aW_1 - \frac{1}{2} a^2\Bigg)
+\Bigg]
+\end{aligned}
+$$
+
+So we can also estimate the expectation of $N$ under $\mathbb{P}$ as
+
+$$
+\hat p_{\mathbb{P}} = \frac{1}{M}\sum_{i=1}^H n_i\exp{\bigg(-aw^{(1)}_i - \frac{a^2}{2}\bigg)}
+$$
+
+where $n_i$ is now 1 if Brownian Motion with the specified drift hits
+the barrier and 0 otherwise, and $w^{(1)}_i$ is Brownian Motion
+sampled at $t=1$.
+
+We can see from the chart below that this is going to be better at
+hitting the required barrier.
+
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/BrownianWithDriftPaths.png") 600 600 (translationX 0.0))
+```
+
+Let's do some calculations.
+
+> supAbove' a = (sum $ zipWith (*) ns ws) / fromIntegral n
+>   where
+>     deltaT = recip $ fromIntegral m
+>
+>     uss = map (\seed -> bM0to1 scanl replicateM seed m) [0..n - 1]
+>     ys = map last uss
+>     ws = map (\x -> exp (-a * x - 0.5 * a^2)) ys
+>
+>     vss = map (zipWith (\m x -> x + a * m * deltaT) [0..]) uss
+>     sups = map maximum vss
+>     ns = map fromIntegral $ map fromEnum $ map (>=a) sups
+
+    [ghci]
+    supAbove' 1.0
+    supAbove' 2.0
+    supAbove' 3.0
+
+The reader is invited to try the above estimates with 1,000 samples
+per path to see that even with this respectable number, the
+calculation goes awry.
 
 In General
 ----------
@@ -329,7 +428,7 @@ $$
 By assumption we have $\mathbb{E}M_T \leq \mathbb{E}M_0$ thus $M_t$ is
 a strict martingale.
 
-\blacksquare
+$\blacksquare$
 
 Lemma 2
 -------

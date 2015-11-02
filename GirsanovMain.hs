@@ -29,6 +29,11 @@ main = do
   let sims = map (\seed -> bM0to1 scanl replicateM seed 1000) [0..99]
   displayHeader "diagrams/BrownianPaths.png"
                 (diag "Sample Paths for Brownian Motion"
-                 (let ls = [0..1000 - 1] in zip ls (map (\x -> x*2e-3 + 2) ls) )
+                 (let ls = [0..1000 - 1] in zip ls (map (\x -> 3.5) ls) )
+                 (map (zip [0..]) sims))
+  let sims = map (\seed -> bM0to1WithDrift seed 2.0 1000) [0..99]
+  displayHeader "diagrams/BrownianWithDriftPaths.png"
+                (diag "Sample Paths for Brownian Motion with Drift"
+                 (let ls = [0..1000 - 1] in zip ls (map (\x -> 3.5) ls) )
                  (map (zip [0..]) sims))
   putStrLn "hello"

@@ -1,4 +1,4 @@
-% Particle Smoothing
+% Naive Particle Smoothing is Degenerate
 % Dominic Steinitz
 % 21st November 2015
 
@@ -8,6 +8,13 @@ bibliography: Stochastic.bib
 
 Introduction
 ============
+
+Let $\{X_t\}_{t \geq 1}$ be a (hidden) Markov process. By hidden, we
+mean that we are not able to observe it.
+
+$$
+X_1 \sim \mu(\centerdot) \quad X_t \,|\, X_{t-1} \sim f(\centerdot \,|\, x)
+$$
 
 > module ParticleSmoothing where
 

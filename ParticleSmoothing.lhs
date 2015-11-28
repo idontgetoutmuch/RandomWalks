@@ -247,6 +247,8 @@ $$
 > {-# LANGUAGE FlexibleContexts             #-}
 > {-# LANGUAGE TypeFamilies                 #-}
 > {-# LANGUAGE BangPatterns                 #-}
+> {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
+> {-# LANGUAGE ScopedTypeVariables          #-}
 
 > module ParticleSmoothing where
 
@@ -259,12 +261,19 @@ $$
 > import Foreign.Storable ( Storable )
 > import Data.Maybe ( fromJust )
 > import Data.Bits ( shiftR )
-> import qualified Data.Vector.Unboxed as V
+> import qualified Data.Vector as V
 > import Control.Monad.ST
 > import System.Random.MWC
 
+> import           Data.Array.Repa ( Z(..), (:.)(..), Any(..), computeP,
+>                                    extent, DIM1, DIM2, slice, All(..)
+>                                  )
+> import qualified Data.Array.Repa as Repa
+
+> import qualified Control.Monad.Loops as ML
+
 > deltaT, sigma1, sigma2, qc1, qc2 :: Double
-> deltaT = 0.001
+> deltaT = 0.1
 > sigma1 = 1/2
 > sigma2 = 1/2
 > qc1 = 1
@@ -279,8 +288,8 @@ $$
 >          0, 0,       1,      0,
 >          0, 0,       0,      1]
 
-> bigQ :: H.Matrix Double
-> bigQ = (4 H.>< 4) bigQl
+> bigQ :: H.Herm Double
+> bigQ = H.trustSym $ (4 H.>< 4) bigQl
 
 > bigQl :: [Double]
 > bigQl = [qc1 * deltaT^3 / 3,                  0, qc1 * deltaT^2 / 2,                  0,
@@ -296,55 +305,11 @@ $$
 > bigR = H.trustSym $ (2 H.>< 2) [sigma1^2,        0,
 >                                        0, sigma2^2]
 
-> normalMultivariate :: H.Vector Double -> H.Herm Double -> RVarT m (H.Vector Double)
-> normalMultivariate mu bigSigma = do
->   z <- replicateM (H.size mu) (rvarT R.StdNormal)
->   return $ mu + bigA H.#> (H.fromList z)
->   where
->     (vals, bigU) = H.eigSH bigSigma
->     lSqrt = H.diag $ H.cmap sqrt vals
->     bigA = bigU H.<> lSqrt
-
-> data family Normal k :: *
-
-> data instance Normal (H.Vector Double) = Normal (H.Vector Double) (H.Herm Double)
-
-> instance Distribution Normal (H.Vector Double) where
->   rvar (Normal m s) = normalMultivariate m s
-
-> normalPdf :: (H.Numeric a, H.Field a, H.Indexable (H.Vector a) a, Num (H.Vector a)) =>
->              H.Vector a -> H.Herm a -> H.Vector a -> a
-> normalPdf mu sigma x = exp $ normalLogPdf mu sigma x
-
-> normalLogPdf :: (H.Numeric a, H.Field a, H.Indexable (H.Vector a) a, Num (H.Vector a)) =>
->                  H.Vector a -> H.Herm a -> H.Vector a -> a
-> normalLogPdf mu bigSigma x = - H.sumElements (H.cmap log (diagonals dec))
->                               - 0.5 * (fromIntegral (H.size mu)) * log (2 * pi)
->                               - 0.5 * s
->   where
->     dec = fromJust $ H.mbChol bigSigma
->     t = fromJust $ H.linearSolve (H.tr dec) (H.asColumn $ x - mu)
->     u = H.cmap (\x -> x * x) t
->     s = H.sumElements u
-
-> diagonals :: (Storable a, H.Element t, H.Indexable (H.Vector t) a) =>
->              H.Matrix t -> H.Vector a
-> diagonals m = H.fromList (map (\i -> m H.! i H.! i) [0..n-1])
->   where
->     n = max (H.rows m) (H.cols m)
-
-> instance PDF Normal (H.Vector Double) where
->   pdf (Normal m s) = normalPdf m s
->   logPdf (Normal m s) = normalLogPdf m s
-
 > m0 :: H.Vector Double
 > m0 = H.fromList [0, 0, 1, -1]
 
 > bigP0 :: H.Herm Double
 > bigP0 = H.trustSym $ H.ident 4
-
-> bar :: IO [H.Vector Double]
-> bar = replicateM n $ sample $ rvar (Normal m0 bigP0)
 
 > n :: Int
 > n = 500
@@ -352,7 +317,7 @@ $$
 > indices :: V.Vector Double -> V.Vector Double -> V.Vector Int
 > indices bs xs = V.map (binarySearch bs) xs
 
-> binarySearch :: (V.Unbox a, Ord a) =>
+> binarySearch :: Ord a =>
 >                 V.Vector a -> a -> Int
 > binarySearch vec x = loop 0 (V.length vec - 1)
 >   where
@@ -361,15 +326,60 @@ $$
 >       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
 >       where k = l + (u - l) `shiftR` 1
 
+> type SystemState' = (Double, Double, Double, Double)
+
+> type ArraySmoothing' = Repa.Array Repa.U Repa.DIM2
+
+> singleStep'' :: ArraySmoothing' SystemState' -> H.Vector Double ->
+>                 IO (Repa.Array Repa.U DIM2 SystemState')
+> singleStep'' x y = do
+>   let (Z :. ix :. jx) = extent x
+>   xHatR :: Repa.Array Repa.U DIM1 SystemState' <- computeP $ Repa.slice x (Any :. jx - 1)
+>   let xHatH = map (\(a, b, c, d) -> H.fromList [a, b, c, d]) $ Repa.toList xHatR
+>   xTildeNextH <- mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
+>   let xTildeNextR :: Repa.Array Repa.U DIM2 SystemState'
+>       xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
+>                      map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) xTildeNextH
+>   let xTilde :: Repa.Array Repa.D DIM2 SystemState'
+>       xTilde = Repa.append x xTildeNextR
+>
+>   let weights = map (normalLogPdf y bigR) $
+>                 map (bigH H.#>) xTildeNextH
+>       vs  :: V.Vector Double
+>       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
+>       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
+>       js = indices (V.tail cumSumWeights) vs
+>       xNewV :: V.Vector (Repa.Array Repa.D DIM2 SystemState')
+>       xNewV = V.map (\j -> Repa.reshape (Z :. ix :. (1 :: Int)) $
+>                            slice xTilde (Any :. j :. All)) js
+>       xNewR :: Repa.Array Repa.D DIM2 SystemState'
+>       xNewR = V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
+>   computeP xNewR
+
+> carSample :: MonadRandom m =>
+>              H.Vector Double ->
+>              m (Maybe ((H.Vector Double, H.Vector Double), H.Vector Double))
+> carSample xPrev = do
+>   xNew <- sample $ rvar (Normal (bigA H.#> xPrev) bigQ)
+>   yNew <- sample $ rvar (Normal (bigH H.#> xNew) bigR)
+>   return $ Just ((xNew, yNew), xNew)
+
+> carSamples :: [(H.Vector Double, H.Vector Double)]
+> carSamples = evalState (ML.unfoldrM carSample m0) (pureMT 17)
+
+> y :: H.Vector Double
 > y = undefined
 
 > main :: IO ()
 > main = do
->   xTilde1 <- bar
->   let weightUnnormalised = map (normalLogPdf y bigR) $
->                            map (bigH H.#>) xTilde1
+>   xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
+>   let weights = map (normalLogPdf y bigR) $
+>                 map (bigH H.#>) xTilde1
 >   let vs  :: V.Vector Double
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
+>       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
+>   let js = indices (V.tail cumSumWeights) vs
+>       xHat1 = V.map ((V.fromList xTilde1) V.!) js
 >   return ()
 
 > a = 2
@@ -458,6 +468,50 @@ dia = image (DImage (ImageRef "diagrams/BrownianWithDriftPaths.png") 600 600 (tr
 >     vss = map (zipWith (\m x -> x + a * m * deltaT) [0..]) uss
 >     sups = map maximum vss
 >     ns = map fromIntegral $ map fromEnum $ map (>=a) sups
+
+Notes
+=====
+
+> normalMultivariate :: H.Vector Double -> H.Herm Double -> RVarT m (H.Vector Double)
+> normalMultivariate mu bigSigma = do
+>   z <- replicateM (H.size mu) (rvarT R.StdNormal)
+>   return $ mu + bigA H.#> (H.fromList z)
+>   where
+>     (vals, bigU) = H.eigSH bigSigma
+>     lSqrt = H.diag $ H.cmap sqrt vals
+>     bigA = bigU H.<> lSqrt
+
+> data family Normal k :: *
+
+> data instance Normal (H.Vector Double) = Normal (H.Vector Double) (H.Herm Double)
+
+> instance Distribution Normal (H.Vector Double) where
+>   rvar (Normal m s) = normalMultivariate m s
+
+> normalPdf :: (H.Numeric a, H.Field a, H.Indexable (H.Vector a) a, Num (H.Vector a)) =>
+>              H.Vector a -> H.Herm a -> H.Vector a -> a
+> normalPdf mu sigma x = exp $ normalLogPdf mu sigma x
+
+> normalLogPdf :: (H.Numeric a, H.Field a, H.Indexable (H.Vector a) a, Num (H.Vector a)) =>
+>                  H.Vector a -> H.Herm a -> H.Vector a -> a
+> normalLogPdf mu bigSigma x = - H.sumElements (H.cmap log (diagonals dec))
+>                               - 0.5 * (fromIntegral (H.size mu)) * log (2 * pi)
+>                               - 0.5 * s
+>   where
+>     dec = fromJust $ H.mbChol bigSigma
+>     t = fromJust $ H.linearSolve (H.tr dec) (H.asColumn $ x - mu)
+>     u = H.cmap (\x -> x * x) t
+>     s = H.sumElements u
+
+> diagonals :: (Storable a, H.Element t, H.Indexable (H.Vector t) a) =>
+>              H.Matrix t -> H.Vector a
+> diagonals m = H.fromList (map (\i -> m H.! i H.! i) [0..n-1])
+>   where
+>     n = max (H.rows m) (H.cols m)
+
+> instance PDF Normal (H.Vector Double) where
+>   pdf (Normal m s) = normalPdf m s
+>   logPdf (Normal m s) = normalLogPdf m s
 
 Bibliography
 ============

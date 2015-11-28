@@ -256,7 +256,7 @@ $$
 > import Data.Random hiding ( StdNormal, Normal )
 > import qualified Data.Random as R
 > import Control.Monad.State
-> import Data.Number.Erf
+> import Control.Monad.Writer hiding ( Any, All )
 > import qualified Numeric.LinearAlgebra.HMatrix as H
 > import Foreign.Storable ( Storable )
 > import Data.Maybe ( fromJust )
@@ -271,6 +271,7 @@ $$
 > import qualified Data.Array.Repa as Repa
 
 > import qualified Control.Monad.Loops as ML
+
 
 > deltaT, sigma1, sigma2, qc1, qc2 :: Double
 > deltaT = 0.1
@@ -326,21 +327,21 @@ $$
 >       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
 >       where k = l + (u - l) `shiftR` 1
 
-> type SystemState' = (Double, Double, Double, Double)
+> type SystemState = (Double, Double, Double, Double)
 
-> type ArraySmoothing' = Repa.Array Repa.U Repa.DIM2
+> type ArraySmoothing = Repa.Array Repa.U Repa.DIM2
 
-> singleStep'' :: ArraySmoothing' SystemState' -> H.Vector Double ->
->                 IO (Repa.Array Repa.U DIM2 SystemState')
-> singleStep'' x y = do
+> singleStep :: ArraySmoothing SystemState -> H.Vector Double ->
+>                 WriterT [SystemState] IO (ArraySmoothing SystemState)
+> singleStep x y = lift $ do
 >   let (Z :. ix :. jx) = extent x
->   xHatR :: Repa.Array Repa.U DIM1 SystemState' <- computeP $ Repa.slice x (Any :. jx - 1)
+>   xHatR :: Repa.Array Repa.U DIM1 SystemState <- computeP $ Repa.slice x (Any :. jx - 1)
 >   let xHatH = map (\(a, b, c, d) -> H.fromList [a, b, c, d]) $ Repa.toList xHatR
 >   xTildeNextH <- mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
->   let xTildeNextR :: Repa.Array Repa.U DIM2 SystemState'
+>   let xTildeNextR :: Repa.Array Repa.U DIM2 SystemState
 >       xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
 >                      map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) xTildeNextH
->   let xTilde :: Repa.Array Repa.D DIM2 SystemState'
+>   let xTilde :: Repa.Array Repa.D DIM2 SystemState
 >       xTilde = Repa.append x xTildeNextR
 >
 >   let weights = map (normalLogPdf y bigR) $
@@ -349,10 +350,10 @@ $$
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
 >       js = indices (V.tail cumSumWeights) vs
->       xNewV :: V.Vector (Repa.Array Repa.D DIM2 SystemState')
+>       xNewV :: V.Vector (Repa.Array Repa.D DIM2 SystemState)
 >       xNewV = V.map (\j -> Repa.reshape (Z :. ix :. (1 :: Int)) $
 >                            slice xTilde (Any :. j :. All)) js
->       xNewR :: Repa.Array Repa.D DIM2 SystemState'
+>       xNewR :: Repa.Array Repa.D DIM2 SystemState
 >       xNewR = V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
 >   computeP xNewR
 
@@ -367,11 +368,15 @@ $$
 > carSamples :: [(H.Vector Double, H.Vector Double)]
 > carSamples = evalState (ML.unfoldrM carSample m0) (pureMT 17)
 
-> y :: H.Vector Double
-> y = undefined
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 0.0))
+```
 
-> main :: IO ()
-> main = do
+> y :: H.Vector Double
+> y = snd $ head carSamples
+
+> foo :: IO (ArraySmoothing SystemState)
+> foo = do
 >   xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
 >   let weights = map (normalLogPdf y bigR) $
 >                 map (bigH H.#>) xTilde1
@@ -379,95 +384,32 @@ $$
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
 >   let js = indices (V.tail cumSumWeights) vs
->       xHat1 = V.map ((V.fromList xTilde1) V.!) js
+>       xHat1 :: ArraySmoothing SystemState
+>       xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
+>               map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) $
+>               V.toList $
+>               V.map ((V.fromList xTilde1) V.!) js
+>   return xHat1
+
+
+> smoother :: WriterT [SystemState] IO ()
+> smoother = do
+>   xHat1 <- lift $ do
+>     xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
+>     let weights = map (normalLogPdf y bigR) $
+>                   map (bigH H.#>) xTilde1
+>     let vs  :: V.Vector Double
+>         vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
+>         cumSumWeights = V.scanl (+) 0 (V.fromList weights)
+>     let js = indices (V.tail cumSumWeights) vs
+>         xHat1 :: ArraySmoothing SystemState
+>         xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
+>                 map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) $
+>                 V.toList $
+>                 V.map ((V.fromList xTilde1) V.!) js
+>     return xHat1
+>   singleStep xHat1 ((map snd carSamples)!!1)
 >   return ()
-
-> a = 2
-> sigma = 0.1
-
-> foo :: MonadRandom m => Double -> m Double
-> foo xPrev = do
->   epsilon <- sample stdNormal
->   let xNew = a * xPrev + sigma * epsilon
->   return xNew
-
-> samples :: (Foldable f, MonadRandom m) =>
->                     (Int -> RVar Double -> RVar (f Double)) ->
->                     Int ->
->                     m (f Double)
-> samples repM n = sample $ repM n $ stdNormal
-
-> biggerThan5 :: Int
-> biggerThan5 = length (evalState xs (pureMT 42))
->   where
->     xs :: MonadRandom m => m [Double]
->     xs = liftM (filter (>= 5.0)) $ samples replicateM 100000
-
-> biggerThan5' :: Double
-> biggerThan5' = sum (evalState xs (pureMT 42)) / (fromIntegral n)
->   where
->     xs :: MonadRandom m => m [Double]
->     xs = liftM (map g) $
->          liftM (filter (>= 5.0)) $
->          liftM (map (+5)) $
->          samples replicateM n
->     g x = exp $ (5^2 / 2) - 5 * x
->     n = 100000
-
-> epsilons :: (Foldable f, MonadRandom m) =>
->                     (Int -> RVar Double -> RVar (f Double)) ->
->                     Double ->
->                     Int ->
->                     m (f Double)
-> epsilons repM deltaT n = sample $ repM n $ rvar (R.Normal 0.0 (sqrt deltaT))
-
-> bM0to1 :: Foldable f =>
->           ((Double -> Double -> Double) -> Double -> f Double -> f Double)
->           -> (Int -> RVar Double -> RVar (f Double))
->           -> Int
->           -> Int
->           -> f Double
-> bM0to1 scan repM seed n =
->   scan (+) 0.0 $
->   evalState (epsilons repM (recip $ fromIntegral n) n) (pureMT (fromIntegral seed))
-
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/BrownianPaths.png") 600 600 (translationX 0.0))
-```
-
-> p :: Double -> Double -> Double
-> p a t = 2 * (1 - normcdf (a / sqrt t))
-
-> m = 10000
-
-> supAbove :: Double -> Double
-> supAbove a = fromIntegral count / fromIntegral n
->   where
->     count = length $
->             filter (>= a) $
->             map (\seed -> maximum $ bM0to1 scanl replicateM seed m) [0..n - 1]
-
-> bM0to1WithDrift seed mu n =
->   zipWith (\m x -> x + mu * m * deltaT) [0..] $
->   bM0to1 scanl replicateM seed n
->     where
->       deltaT = recip $ fromIntegral n
-
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/BrownianWithDriftPaths.png") 600 600 (translationX 0.0))
-```
-
-> supAbove' a = (sum $ zipWith (*) ns ws) / fromIntegral n
->   where
->     deltaT = recip $ fromIntegral m
->
->     uss = map (\seed -> bM0to1 scanl replicateM seed m) [0..n - 1]
->     ys = map last uss
->     ws = map (\x -> exp (-a * x - 0.5 * a^2)) ys
->
->     vss = map (zipWith (\m x -> x + a * m * deltaT) [0..]) uss
->     sups = map maximum vss
->     ns = map fromIntegral $ map fromEnum $ map (>=a) sups
 
 Notes
 =====

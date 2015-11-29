@@ -272,6 +272,10 @@ $$
 
 > import qualified Control.Monad.Loops as ML
 
+> import Debug.Trace
+> import PrettyPrint ()
+> import Text.PrettyPrint
+> import Text.PrettyPrint.HughesPJClass ( pPrint )
 
 > deltaT, sigma1, sigma2, qc1, qc2 :: Double
 > deltaT = 0.1
@@ -312,9 +316,6 @@ $$
 > bigP0 :: H.Herm Double
 > bigP0 = H.trustSym $ H.ident 4
 
-> n :: Int
-> n = 500
-
 > indices :: V.Vector Double -> V.Vector Double -> V.Vector Int
 > indices bs xs = V.map (binarySearch bs) xs
 
@@ -329,32 +330,82 @@ $$
 
 > type SystemState = (Double, Double, Double, Double)
 
-> type ArraySmoothing = Repa.Array Repa.U Repa.DIM2
+> type ArraySmoothing = Repa.Array Repa.U DIM2
 
 > singleStep :: ArraySmoothing SystemState -> H.Vector Double ->
->                 WriterT [SystemState] IO (ArraySmoothing SystemState)
-> singleStep x y = lift $ do
+>               WriterT [ArraySmoothing SystemState] (StateT PureMT IO) (ArraySmoothing SystemState)
+> singleStep x y = do
 >   let (Z :. ix :. jx) = extent x
->   xHatR :: Repa.Array Repa.U DIM1 SystemState <- computeP $ Repa.slice x (Any :. jx - 1)
->   let xHatH = map (\(a, b, c, d) -> H.fromList [a, b, c, d]) $ Repa.toList xHatR
->   xTildeNextH <- mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
->   let xTildeNextR :: Repa.Array Repa.U DIM2 SystemState
->       xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
->                      map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) xTildeNextH
->   let xTilde :: Repa.Array Repa.D DIM2 SystemState
+>
+>   xTildeNextH <- lift $ do
+>     xHatR :: Repa.Array Repa.U DIM1 SystemState <- computeP $ Repa.slice x (Any :. jx - 1)
+>     let xHatH = map (\(a, b, c, d) -> H.fromList [a, b, c, d]) $ Repa.toList xHatR
+>     xTildeNextH <- mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
+>     return xTildeNextH
+>
+>   let systemState = map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) xTildeNextH
+>   -- trace ("\nSystem state: " ++ show systemState) $ return ()
+>   tell [x]
+>
+>   lift $ do
+>   let xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
+>                     systemState
 >       xTilde = Repa.append x xTildeNextR
 >
->   let weights = map (normalLogPdf y bigR) $
+>       weights = map (normalPdf y bigR) $
 >                 map (bigH H.#>) xTildeNextH
->       vs  :: V.Vector Double
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
 >       js = indices (V.tail cumSumWeights) vs
->       xNewV :: V.Vector (Repa.Array Repa.D DIM2 SystemState)
->       xNewV = V.map (\j -> Repa.reshape (Z :. ix :. (1 :: Int)) $
+>   -- foo :: Repa.Array Repa.U DIM2 SystemState <- computeP xTilde
+>   -- trace (show foo ++ " " ++ show js ++ " " ++ show ix ++ " " ++ show jx) $ return ()
+>   let xNewV = V.map (\j -> Repa.transpose $
+>                            Repa.reshape (Z :. (1 :: Int) :. jx + 1) $
 >                            slice xTilde (Any :. j :. All)) js
->       xNewR :: Repa.Array Repa.D DIM2 SystemState
->       xNewR = V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
+>       xNewR = Repa.transpose $ V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
+>   computeP xNewR
+
+> n :: Int
+> n = 23
+
+> bigA1 = 0.5
+> bigQ1 = 0.1
+> bigR1 = 0.1
+> bigH1 = 1.0
+
+> singleStep1 :: ArraySmoothing Double -> Double ->
+>               WriterT [ArraySmoothing Double] (StateT PureMT IO) (ArraySmoothing Double)
+> singleStep1 x y = do
+>   let (Z :. ix :. jx) = extent x
+>
+>   xTildeNextH <- lift $ do
+>     xHatR :: Repa.Array Repa.U DIM1 Double <- computeP $ Repa.slice x (Any :. jx - 1)
+>     let xHatH = Repa.toList xHatR
+>     xTildeNextH <- mapM (\x -> sample $ rvar (R.Normal (bigA1 * x) bigQ1)) xHatH
+>     return xTildeNextH
+>
+>   let systemState = xTildeNextH
+>   -- trace ("\nSystem state: " ++ show systemState) $ return ()
+>   tell [x]
+>
+>   lift $ do
+>   let xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
+>                     systemState
+>       xTilde = Repa.append x xTildeNextR
+>
+>       weights = map (pdf (R.Normal y bigR1)) $
+>                 map (bigH1 *) xTildeNextH
+>       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
+>       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
+>       totWeight = sum weights
+>       js = indices (V.map (/ totWeight) $ V.tail cumSumWeights) vs
+>   -- foo :: Repa.Array Repa.U DIM2 SystemState <- computeP xTilde
+>   -- trace (show foo ++ " " ++ show js ++ " " ++ show ix ++ " " ++ show jx) $ return ()
+>   let xNewV = V.map (\j -> Repa.transpose $
+>                            Repa.reshape (Z :. (1 :: Int) :. jx + 1) $
+>                            slice xTilde (Any :. j :. All)) js
+>       xNewR = Repa.transpose $ V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
+>   -- trace ("\njs " ++ show js) $ return ()
 >   computeP xNewR
 
 > carSample :: MonadRandom m =>
@@ -368,6 +419,17 @@ $$
 > carSamples :: [(H.Vector Double, H.Vector Double)]
 > carSamples = evalState (ML.unfoldrM carSample m0) (pureMT 17)
 
+> carSample1 :: MonadRandom m =>
+>               Double ->
+>               m (Maybe ((Double, Double), Double))
+> carSample1 xPrev = do
+>   xNew <- sample $ rvar (R.Normal (bigA1 * xPrev) 0.1 {- bigQ1 -})
+>   yNew <- sample $ rvar (R.Normal (bigH1 * xNew) bigR1)
+>   return $ Just ((xNew, yNew), xNew)
+
+> carSamples1 :: [(Double, Double)]
+> carSamples1 = evalState (ML.unfoldrM carSample1 0.0) (pureMT 17)
+
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 0.0))
 ```
@@ -375,41 +437,67 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 > y :: H.Vector Double
 > y = snd $ head carSamples
 
-> foo :: IO (ArraySmoothing SystemState)
-> foo = do
+> y1 :: Double
+> y1 = snd $ head carSamples1
+
+> initXHat :: MonadRandom m => m (ArraySmoothing SystemState)
+> initXHat = do
 >   xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
->   let weights = map (normalLogPdf y bigR) $
+>   -- trace ("\nxTilde1 " ++ show xTilde1) $ return ()
+>   let weights = map (normalPdf y bigR) $
 >                 map (bigH H.#>) xTilde1
->   let vs  :: V.Vector Double
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
->   let js = indices (V.tail cumSumWeights) vs
->       xHat1 :: ArraySmoothing SystemState
+>       js = indices (V.tail cumSumWeights) vs
 >       xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
 >               map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) $
 >               V.toList $
 >               V.map ((V.fromList xTilde1) V.!) js
+>   -- trace ("\nWeights1 " ++ show weights) $ return ()
 >   return xHat1
 
+> initXHat1 :: MonadRandom m => m (ArraySmoothing Double)
+> initXHat1 = do
+>   xTilde1 <- replicateM n $ sample $ rvar $ R.Normal y1 bigR1
+>   -- trace ("\nxTilde1 " ++ show xTilde1) $ return ()
+>   let weights = map (pdf (R.Normal y1 bigR1)) $
+>                 map (bigH1 *) xTilde1
+>       totWeight = sum weights
+>       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
+>       cumSumWeights = V.scanl (+) 0 (V.fromList $ map (/ totWeight) weights)
+>       js = indices (V.tail cumSumWeights) vs
+>       xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
+>               V.toList $
+>               V.map ((V.fromList xTilde1) V.!) js
+>   -- trace ("cumSumWeights " ++ show cumSumWeights) $ return ()
+>   -- trace ("\nWeights1 " ++ show weights) $ return ()
+>   -- trace ("\njs1 " ++ show js) $ return ()
+>   return xHat1
 
-> smoother :: WriterT [SystemState] IO ()
-> smoother = do
->   xHat1 <- lift $ do
->     xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
->     let weights = map (normalLogPdf y bigR) $
->                   map (bigH H.#>) xTilde1
->     let vs  :: V.Vector Double
->         vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
->         cumSumWeights = V.scanl (+) 0 (V.fromList weights)
->     let js = indices (V.tail cumSumWeights) vs
->         xHat1 :: ArraySmoothing SystemState
->         xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
->                 map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) $
->                 V.toList $
->                 V.map ((V.fromList xTilde1) V.!) js
->     return xHat1
->   singleStep xHat1 ((map snd carSamples)!!1)
->   return ()
+> test :: IO ()
+> test = do
+>   states <- snd <$> evalStateT smoother (pureMT 24)
+>   putStrLn "States"
+>   mapM_ (putStrLn . render . pPrint) states
+
+> test1 :: IO ()
+> test1 = do
+>   states <- snd <$> evalStateT smoother1 (pureMT 24)
+>   putStrLn "States"
+>   foo :: Repa.Array Repa.U DIM1 Double <- computeP $ Repa.slice (last states) (Any :. (22 :: Int) :. All)
+>   error (show foo)
+>   error (show $ extent $ (last states))
+>   mapM_ (putStrLn . render . pPrint) states
+
+> smoother :: StateT PureMT IO (ArraySmoothing SystemState, [ArraySmoothing SystemState])
+> smoother = runWriterT $ do
+>   xHat1 <- lift initXHat
+>   foldM singleStep xHat1 (take 3 $ map snd $ tail carSamples)
+
+> smoother1 :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
+> smoother1 = runWriterT $ do
+>   xHat1 <- lift initXHat1
+>   foldM singleStep1 xHat1 (take 20 $ map snd $ tail carSamples1)
 
 Notes
 =====

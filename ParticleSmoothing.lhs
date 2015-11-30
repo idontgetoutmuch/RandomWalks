@@ -480,14 +480,18 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 >   putStrLn "States"
 >   mapM_ (putStrLn . render . pPrint) states
 
-> test1 :: IO ()
+> test1 :: IO [[Double]]
 > test1 = do
 >   states <- snd <$> evalStateT smoother1 (pureMT 24)
->   putStrLn "States"
->   foo :: Repa.Array Repa.U DIM1 Double <- computeP $ Repa.slice (last states) (Any :. (22 :: Int) :. All)
->   error (show foo)
->   error (show $ extent $ (last states))
->   mapM_ (putStrLn . render . pPrint) states
+>   let foo :: Int -> IO (Repa.Array Repa.U DIM1 Double)
+>       foo i = computeP $ Repa.slice (last states) (Any :. i :. All)
+>   bar <- mapM foo [0..22]
+>   let baz :: [[Double]]
+>       baz = map Repa.toList bar
+>   return baz
+>   -- error (show bar)
+>   -- error (show $ extent $ (last states))
+>   -- mapM_ (putStrLn . render . pPrint) states
 
 > smoother :: StateT PureMT IO (ArraySmoothing SystemState, [ArraySmoothing SystemState])
 > smoother = runWriterT $ do
@@ -498,6 +502,10 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 > smoother1 = runWriterT $ do
 >   xHat1 <- lift initXHat1
 >   foldM singleStep1 xHat1 (take 20 $ map snd $ tail carSamples1)
+
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/Smooth.png") 600 600 (translationX 0.0))
+```
 
 Notes
 =====

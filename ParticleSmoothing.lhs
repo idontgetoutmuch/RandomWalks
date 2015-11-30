@@ -332,26 +332,37 @@ $$
 
 > type ArraySmoothing = Repa.Array Repa.U DIM2
 
-> f :: Storable a => (a, a, a, a) -> H.Vector a
+> f :: (Double, Double, Double, Double) -> H.Vector Double
 > f (a, b, c, d) = H.fromList [a, b, c, d]
 
-> g :: Storable a => H.Vector a -> (a, a, a, a)
+> f1 :: Double -> H.Vector Double
+> f1 a = H.fromList [a]
+
+> g :: H.Vector Double -> (Double, Double, Double, Double)
 > g = (\[a,b,c,d] -> (a, b, c, d)) . H.toList
 
+> g1 :: H.Vector Double -> Double
+> g1 = (\[a] -> a) . H.toList
 
 > singleStep :: forall a . U.Unbox a =>
+>               (a -> H.Vector Double) ->
+>               (H.Vector Double -> a) ->
+>               H.Matrix Double ->
+>               H.Herm Double ->
+>               H.Matrix Double ->
+>               H.Herm Double ->
 >               ArraySmoothing a -> H.Vector Double ->
 >               WriterT [ArraySmoothing a] (StateT PureMT IO) (ArraySmoothing a)
-> singleStep x y = do
+> singleStep f g bigA bigQ bigH bigR x y = do
 >   let (Z :. ix :. jx) = extent x
 >
 >   xTildeNextH <- lift $ do
 >     xHatR :: Repa.Array Repa.U DIM1 a <- computeP $ Repa.slice x (Any :. jx - 1)
->     let xHatH = map undefined $ Repa.toList xHatR
+>     let xHatH = map f $ Repa.toList xHatR
 >     xTildeNextH <- mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
 >     return xTildeNextH
 >
->   let systemState = map undefined xTildeNextH
+>   let systemState = map g xTildeNextH
 >   tell [x]
 >
 >   lift $ do
@@ -363,7 +374,8 @@ $$
 >                 map (bigH H.#>) xTildeNextH
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
->       js = indices (V.tail cumSumWeights) vs
+>       totWeight = sum weights
+>       js = indices (V.map (/ totWeight) $ V.tail cumSumWeights) vs
 >   let xNewV = V.map (\j -> Repa.transpose $
 >                            Repa.reshape (Z :. (1 :: Int) :. jx + 1) $
 >                            slice xTilde (Any :. j :. All)) js
@@ -477,7 +489,7 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 
 > test1 :: IO [[Double]]
 > test1 = do
->   states <- snd <$> evalStateT smoother1 (pureMT 24)
+>   states <- snd <$> evalStateT smoother1a (pureMT 24)
 >   let foo :: Int -> IO (Repa.Array Repa.U DIM1 Double)
 >       foo i = computeP $ Repa.slice (last states) (Any :. i :. All)
 >   bar <- mapM foo [0..22]
@@ -488,12 +500,20 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 > smoother :: StateT PureMT IO (ArraySmoothing SystemState, [ArraySmoothing SystemState])
 > smoother = runWriterT $ do
 >   xHat1 <- lift initXHat
->   foldM singleStep xHat1 (take 3 $ map snd $ tail carSamples)
+>   foldM (singleStep f g bigA bigQ bigH bigR) xHat1 (take 3 $ map snd $ tail carSamples)
 
 > smoother1 :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
 > smoother1 = runWriterT $ do
 >   xHat1 <- lift initXHat1
 >   foldM singleStep1 xHat1 (take 20 $ map snd $ tail carSamples1)
+
+> smoother1a :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
+> smoother1a = runWriterT $ do
+>   xHat1 <- lift initXHat1
+>   foldM (singleStep f1 g1 ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1])
+>                           ((1 H.>< 1) [bigH1]) (H.trustSym $ (1 H.>< 1) [bigR1]))
+>         xHat1
+>         (take 20 $ map H.fromList $ map return . map snd $ tail carSamples1)
 
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/Smooth.png") 600 600 (translationX 0.0))

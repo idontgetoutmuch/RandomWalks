@@ -76,6 +76,55 @@ $$
 p(x_{1:n} \,|\, y_{1:n}) = \frac{p(x_{1:n}, y_{1:n})}{p(y_{1:n})}
 $$
 
+Haskell Preamble
+----------------
+
+> {-# OPTIONS_GHC -Wall                     #-}
+> {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
+> {-# OPTIONS_GHC -fno-warn-type-defaults   #-}
+> {-# OPTIONS_GHC -fno-warn-unused-do-bind  #-}
+> {-# OPTIONS_GHC -fno-warn-missing-methods #-}
+> {-# OPTIONS_GHC -fno-warn-orphans         #-}
+
+
+> {-# LANGUAGE FlexibleInstances            #-}
+> {-# LANGUAGE MultiParamTypeClasses        #-}
+> {-# LANGUAGE FlexibleContexts             #-}
+> {-# LANGUAGE TypeFamilies                 #-}
+> {-# LANGUAGE BangPatterns                 #-}
+> {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
+> {-# LANGUAGE ScopedTypeVariables          #-}
+
+> module ParticleSmoothing where
+
+> import Data.Random.Source.PureMT
+> import Data.Random hiding ( StdNormal, Normal )
+> import qualified Data.Random as R
+> import Control.Monad.State
+> import Control.Monad.Writer hiding ( Any, All )
+> import qualified Numeric.LinearAlgebra.HMatrix as H
+> import Foreign.Storable ( Storable )
+> import Data.Maybe ( fromJust )
+> import Data.Bits ( shiftR )
+> import qualified Data.Vector as V
+> import qualified Data.Vector.Unboxed as U
+> import Control.Monad.ST
+> import System.Random.MWC
+
+> import           Data.Array.Repa ( Z(..), (:.)(..), Any(..), computeP,
+>                                    extent, DIM1, DIM2, slice, All(..)
+>                                  )
+> import qualified Data.Array.Repa as Repa
+
+> import qualified Control.Monad.Loops as ML
+
+> import PrettyPrint ()
+> import Text.PrettyPrint
+> import Text.PrettyPrint.HughesPJClass ( pPrint )
+
+Some Theory
+===========
+
 By definition we have
 
 $$
@@ -234,48 +283,11 @@ $$
 X_{1:n}^{(i)} \sim \tilde{p}(x_{1:n} \,|\, y_{1:n})
 $$
 
-> {-# OPTIONS_GHC -Wall                     #-}
-> {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
-> {-# OPTIONS_GHC -fno-warn-type-defaults   #-}
-> {-# OPTIONS_GHC -fno-warn-unused-do-bind  #-}
-> {-# OPTIONS_GHC -fno-warn-missing-methods #-}
-> {-# OPTIONS_GHC -fno-warn-orphans         #-}
+A Haskell Implementation
+========================
 
-
-> {-# LANGUAGE FlexibleInstances            #-}
-> {-# LANGUAGE MultiParamTypeClasses        #-}
-> {-# LANGUAGE FlexibleContexts             #-}
-> {-# LANGUAGE TypeFamilies                 #-}
-> {-# LANGUAGE BangPatterns                 #-}
-> {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
-> {-# LANGUAGE ScopedTypeVariables          #-}
-
-> module ParticleSmoothing where
-
-> import Data.Random.Source.PureMT
-> import Data.Random hiding ( StdNormal, Normal )
-> import qualified Data.Random as R
-> import Control.Monad.State
-> import Control.Monad.Writer hiding ( Any, All )
-> import qualified Numeric.LinearAlgebra.HMatrix as H
-> import Foreign.Storable ( Storable )
-> import Data.Maybe ( fromJust )
-> import Data.Bits ( shiftR )
-> import qualified Data.Vector as V
-> import qualified Data.Vector.Unboxed as U
-> import Control.Monad.ST
-> import System.Random.MWC
-
-> import           Data.Array.Repa ( Z(..), (:.)(..), Any(..), computeP,
->                                    extent, DIM1, DIM2, slice, All(..)
->                                  )
-> import qualified Data.Array.Repa as Repa
-
-> import qualified Control.Monad.Loops as ML
-
-> import PrettyPrint ()
-> import Text.PrettyPrint
-> import Text.PrettyPrint.HughesPJClass ( pPrint )
+Let's specify some values for the example of the car moving in two
+dimensions.
 
 > deltaT, sigma1, sigma2, qc1, qc2 :: Double
 > deltaT = 0.1
@@ -316,33 +328,20 @@ $$
 > bigP0 :: H.Herm Double
 > bigP0 = H.trustSym $ H.ident 4
 
-> indices :: V.Vector Double -> V.Vector Double -> V.Vector Int
-> indices bs xs = V.map (binarySearch bs) xs
+> carSample :: MonadRandom m =>
+>              H.Vector Double ->
+>              m (Maybe ((H.Vector Double, H.Vector Double), H.Vector Double))
+> carSample xPrev = do
+>   xNew <- sample $ rvar (Normal (bigA H.#> xPrev) bigQ)
+>   yNew <- sample $ rvar (Normal (bigH H.#> xNew) bigR)
+>   return $ Just ((xNew, yNew), xNew)
 
-> binarySearch :: Ord a =>
->                 V.Vector a -> a -> Int
-> binarySearch vec x = loop 0 (V.length vec - 1)
->   where
->     loop !l !u
->       | u <= l    = l
->       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
->       where k = l + (u - l) `shiftR` 1
+We can plot an example trajectory for the car and the noisy
+observations that are available to the smoother / filter.
 
-> type SystemState = (Double, Double, Double, Double)
-
-> type ArraySmoothing = Repa.Array Repa.U DIM2
-
-> f :: (Double, Double, Double, Double) -> H.Vector Double
-> f (a, b, c, d) = H.fromList [a, b, c, d]
-
-> f1 :: Double -> H.Vector Double
-> f1 a = H.fromList [a]
-
-> g :: H.Vector Double -> (Double, Double, Double, Double)
-> g = (\[a,b,c,d] -> (a, b, c, d)) . H.toList
-
-> g1 :: H.Vector Double -> Double
-> g1 = (\[a] -> a) . H.toList
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 0.0))
+```
 
 > singleStep :: forall a . U.Unbox a =>
 >               (a -> H.Vector Double) ->
@@ -382,44 +381,6 @@ $$
 >       xNewR = Repa.transpose $ V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
 >   computeP xNewR
 
-> singleStep1 :: ArraySmoothing Double -> Double ->
->               WriterT [ArraySmoothing Double] (StateT PureMT IO) (ArraySmoothing Double)
-> singleStep1 x y = do
->   let (Z :. ix :. jx) = extent x
->
->   xTildeNextH <- lift $ do
->     xHatR :: Repa.Array Repa.U DIM1 Double <- computeP $ Repa.slice x (Any :. jx - 1)
->     let xHatH = Repa.toList xHatR
->     xTildeNextH <- mapM (\x -> sample $ rvar (R.Normal (bigA1 * x) bigQ1)) xHatH
->     return xTildeNextH
->
->   let systemState = xTildeNextH
->   tell [x]
->
->   lift $ do
->   let xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
->                     systemState
->       xTilde = Repa.append x xTildeNextR
->
->       weights = map (pdf (R.Normal y bigR1)) $
->                 map (bigH1 *) xTildeNextH
->       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
->       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
->       totWeight = sum weights
->       js = indices (V.map (/ totWeight) $ V.tail cumSumWeights) vs
->   let xNewV = V.map (\j -> Repa.transpose $
->                            Repa.reshape (Z :. (1 :: Int) :. jx + 1) $
->                            slice xTilde (Any :. j :. All)) js
->       xNewR = Repa.transpose $ V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
->   computeP xNewR
-
-> carSample :: MonadRandom m =>
->              H.Vector Double ->
->              m (Maybe ((H.Vector Double, H.Vector Double), H.Vector Double))
-> carSample xPrev = do
->   xNew <- sample $ rvar (Normal (bigA H.#> xPrev) bigQ)
->   yNew <- sample $ rvar (Normal (bigH H.#> xNew) bigR)
->   return $ Just ((xNew, yNew), xNew)
 
 > carSamples :: [(H.Vector Double, H.Vector Double)]
 > carSamples = evalState (ML.unfoldrM carSample m0) (pureMT 17)
@@ -434,10 +395,6 @@ $$
 
 > carSamples1 :: [(Double, Double)]
 > carSamples1 = evalState (ML.unfoldrM carSample1 0.0) (pureMT 17)
-
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 0.0))
-```
 
 > y :: H.Vector Double
 > y = snd $ head carSamples
@@ -497,21 +454,32 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 >       baz = map Repa.toList bar
 >   return baz
 
+> type SystemState = (Double, Double, Double, Double)
+
+> type ArraySmoothing = Repa.Array Repa.U DIM2
+
+> f :: (Double, Double, Double, Double) -> H.Vector Double
+> f (a, b, c, d) = H.fromList [a, b, c, d]
+
+> f1 :: Double -> H.Vector Double
+> f1 a = H.fromList [a]
+
+> g :: H.Vector Double -> (Double, Double, Double, Double)
+> g = (\[a,b,c,d] -> (a, b, c, d)) . H.toList
+
+> g1 :: H.Vector Double -> Double
+> g1 = (\[a] -> a) . H.toList
+
 > smoother :: StateT PureMT IO (ArraySmoothing SystemState, [ArraySmoothing SystemState])
 > smoother = runWriterT $ do
 >   xHat1 <- lift initXHat
 >   foldM (singleStep f g bigA bigQ bigH bigR) xHat1 (take 3 $ map snd $ tail carSamples)
 
-> smoother1 :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
-> smoother1 = runWriterT $ do
->   xHat1 <- lift initXHat1
->   foldM singleStep1 xHat1 (take 20 $ map snd $ tail carSamples1)
-
 > smoother1a :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
 > smoother1a = runWriterT $ do
 >   xHat1 <- lift initXHat1
->   foldM (singleStep f1 g1 ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1])
->                           ((1 H.>< 1) [bigH1]) (H.trustSym $ (1 H.>< 1) [bigR1]))
+>   foldM (singleStep f1 g1 ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1^2])
+>                           ((1 H.>< 1) [bigH1]) (H.trustSym $ (1 H.>< 1) [bigR1^2]))
 >         xHat1
 >         (take 20 $ map H.fromList $ map return . map snd $ tail carSamples1)
 
@@ -521,6 +489,31 @@ dia = image (DImage (ImageRef "diagrams/Smooth.png") 600 600 (translationX 0.0))
 
 Notes
 =====
+
+Helpers for the Inverse CDF
+---------------------------
+
+That these are helpers for the inverse CDF is delayed to another blog
+post.
+
+> indices :: V.Vector Double -> V.Vector Double -> V.Vector Int
+> indices bs xs = V.map (binarySearch bs) xs
+
+> binarySearch :: Ord a =>
+>                 V.Vector a -> a -> Int
+> binarySearch vec x = loop 0 (V.length vec - 1)
+>   where
+>     loop !l !u
+>       | u <= l    = l
+>       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
+>       where k = l + (u - l) `shiftR` 1
+
+Multivariate Normal
+-------------------
+
+The *random-fu* package does not contain a sampler or pdf for a
+multivariate normal so we create our own. This should be added to
+*random-fu-multivariate* package or something similar.
 
 > normalMultivariate :: H.Vector Double -> H.Herm Double -> RVarT m (H.Vector Double)
 > normalMultivariate mu bigSigma = do

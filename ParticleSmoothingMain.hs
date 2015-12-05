@@ -33,6 +33,12 @@ main = do
                 (diag "Car Path and Measurements"
                  (zip x1s x2s)
                  (zip y1s y2s))
+  uss <- testCar
+  displayHeader "diagrams/CarPositionInf.png"
+                (diagFitted "Car Path and Measurements"
+                 (zip x1s x2s)
+                 (zip y1s y2s)
+                 (zip (map xPos uss) (map yPos uss)))
   xss <- test1
   let l = length $ head xss
   displayHeader "diagrams/Smooth.png"

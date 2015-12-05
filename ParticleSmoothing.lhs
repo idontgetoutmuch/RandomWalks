@@ -25,16 +25,20 @@ $$
 That is the observations are conditionally independent given the state
 of the hidden process.
 
-As an example let us take
+As an example let us take the one given in @Srkk:2013:BFS:2534502
+where the movement of a car is given by Newton's laws of motion and
+the acceleration is modelled as white noise.
 
 $$
 \begin{aligned}
-X_t &= aX_{t-1} + \sigma \epsilon_t \\
-Y_t &= bX_t + \tau \eta_t
+X_t &= AX_{t-1} + Q \epsilon_t \\
+Y_t &= HX_t + R \eta_t
 \end{aligned}
 $$
 
-where
+Although we do not do so here, $A, Q, H$ and $R$ can be derived from
+the dynamics. For the purpose of this blog post, we note that they are
+given by
 
 $$
 A =
@@ -70,7 +74,10 @@ R =
 \end{bmatrix}
 $$
 
-We wish to determine
+We wish to determine the position and velocity of the car given noisy
+observations of the position. In general we need the distribution of
+the hidden path given the observable path. We use the notation
+$x_{m:n}$ to mean the path of $x$ starting a $m$ and finishing at $n$.
 
 $$
 p(x_{1:n} \,|\, y_{1:n}) = \frac{p(x_{1:n}, y_{1:n})}{p(y_{1:n})}
@@ -94,6 +101,7 @@ Haskell Preamble
 > {-# LANGUAGE BangPatterns                 #-}
 > {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
 > {-# LANGUAGE ScopedTypeVariables          #-}
+> {-# LANGUAGE TemplateHaskell              #-}
 
 > module ParticleSmoothing where
 
@@ -111,43 +119,23 @@ Haskell Preamble
 > import Control.Monad.ST
 > import System.Random.MWC
 
-> import           Data.Array.Repa ( Z(..), (:.)(..), Any(..), computeP,
->                                    extent, DIM1, DIM2, slice, All(..)
->                                  )
+> import Data.Array.Repa ( Z(..), (:.)(..), Any(..), computeP,
+>                          extent, DIM1, DIM2, slice, All(..)
+>                        )
 > import qualified Data.Array.Repa as Repa
 
 > import qualified Control.Monad.Loops as ML
 
 > import PrettyPrint ()
 > import Text.PrettyPrint
-> import Text.PrettyPrint.HughesPJClass ( pPrint )
+> import Text.PrettyPrint.HughesPJClass ( Pretty, pPrint )
+
+> import Data.Vector.Unboxed.Deriving
+
+
 
 Some Theory
 ===========
-
-By definition we have
-
-$$
-{p(y_{1:n})} = \int {p(x_{1:n}, y_{1:n})} \,\mathrm{d}x_{1:n}
-$$
-
-And from the Markov and conditional independence we have
-
-$$
-{p(x_{1:n}, y_{1:n})} =
-\underbrace{\mu(x_1)\prod_{k = 2}^n f(x_k \,|\, x_{k-1})}_{p(x_{1:n})}
-\underbrace{\prod_{k = 1}^n g(y_k \,|\, x_k)}_{p(y_{1:n} \,|\, x_{1:n})}
-$$
-
-using the Markov property and Chapman-Kolmogorov for the first
-factorisation and conditional independence for the second
-factorisation.
-
-For finite state models and linear Gaussian models (such the example
-above), the posterior can be calculated exactly, see, for example, the
-[Kalman
-filter](https://idontgetoutmuch.wordpress.com/2014/08/06/fun-with-kalman-filters-part-ii/). In
-other cases we need to find a numerical method.
 
 If we could sample $X_{1:n}^{(i)} \sim p(x_{1:n} \,|\, y_{1:n})$ then
 we could approximate the posterior as
@@ -165,7 +153,7 @@ $$
 When $k = N$, this is the filtering estimate.
 
 Standard Bayesian Recursion
-===========================
+---------------------------
 
 **Prediction**
 
@@ -201,7 +189,7 @@ We have
 
 $$
 \begin{aligned}
-p(x_{1:n} \,|\, y_{1:n}) &= \frac{x_{1:n}, y_{1:n}}{p(y_{1:n})} \\
+p(x_{1:n} \,|\, y_{1:n}) &= \frac{p(x_{1:n}, y_{1:n})}{p(y_{1:n})} \\
 &= \frac{p(x_n, y_n \,|\, x_{1:n-1}, y_{1:n-1})}{p(y_{1:n})} \, p(x_{1:n-1}, y_{1:n-1}) \\
 &= \frac{p(y_n \,|\, x_{1:n}, y_{1:n-1}) \, p(x_n \,|\, x_{1:n-1}, y_{1:n-1}) }{p(y_{1:n})} \, p(x_{1:n-1}, y_{1:n-1}) \\
 &= \frac{g(y_n \,|\, x_{n}) \, f(x_n \,|\, x_{n-1})}{p(y_n \,|\, y_{1:n-1})}
@@ -210,7 +198,7 @@ p(x_{1:n} \,|\, y_{1:n}) &= \frac{x_{1:n}, y_{1:n}}{p(y_{1:n})} \\
 &= \frac{g(y_n \,|\, x_{n}) \, f(x_n \,|\, x_{n-1})}{p(y_n \,|\, y_{1:n-1})}
 \,
 {p(x_{1:n-1} \,|\,y_{1:n-1})} \\
-&= \frac{g(y_n \,|\, x_{n}) \, \overbrace{f(x_n \,|\, x_{n-1}) \, {p(x_{1:n-1} \,|\,y_{1:n-1})}}^{\mathrm{predictive}p(x_{1:n} \,|\, y_{1:n-1})}}
+&= \frac{g(y_n \,|\, x_{n}) \, \overbrace{f(x_n \,|\, x_{n-1}) \, {p(x_{1:n-1} \,|\,y_{1:n-1})}}^{\mathrm{predictive}\,p(x_{1:n} \,|\, y_{1:n-1})}}
 {p(y_n \,|\, y_{1:n-1})} \\
 \end{aligned}
 $$
@@ -241,9 +229,9 @@ Algorithm
 The idea is to simulate paths using the recursion we derived above.
 
 
-1. At time $n-1$ we have
+1. At time $n-1$ we have an approximating distribution
 $$
-\hat{p}(x_{1:n-1} \,|\, y_{n-1}) = \frac{1}{N}\sum_{i=1}^N \delta_{X_{1:n-1}}^{(i)}(x_{1:n-1})
+\hat{p}(x_{1:n-1} \,|\, y_{1:n-1}) = \frac{1}{N}\sum_{i=1}^N \delta_{X_{1:n-1}}^{(i)}(x_{1:n-1})
 $$
 
 2. Sample $\tilde{X}_n^{(i)} \sim f(\centerdot \,|\, X_{n-1}^{(i)})$
@@ -251,32 +239,38 @@ and set $\tilde{X}_{1:n}^{(i)} = (\tilde{X}_{1:n-1}^{(i)},
 \tilde{X}_n^{(i)})$. We then have an approximation of the prediction
 step
 $$
-\hat{p}(x_{1:n} \,|\, y_{n-1}) =
+\hat{p}(x_{1:n} \,|\, y_{1:n-1}) =
 \frac{1}{N}\sum_{i=1}^N \delta_{\tilde{X}_{1:n}}^{(i)}(x_{1:n})
 $$
-
 Substituting
-
 $$
 \begin{aligned}
 {\hat{p}(y_n \,|\, y_{1:n-1})} &=
-\int {g(y_n \,|\, x_n) \, \hat{p}(x_n \,|\, y_{1:n-1})} \,\mathrm{d}x_n \\
+\int {g(y_n \,|\, x_n) \, \hat{p}(x_{1:n} \,|\, y_{1:n-1})} \,\mathrm{d}x_n \\
 &=
 \int {g(y_n \,|\, x_n)}\frac{1}{N}\sum_{i=1}^N \delta_{\tilde{X}_{1:n-1}}^{(i)}(x_{1:n}) \,\mathrm{d}x_n \\
 &=
 \frac{1}{N}\sum_{i=1}^N {g(y_n \,|\, \tilde{X}_n^{(i)})}
 \end{aligned}
 $$
-
-FIXME fill in the missing step
-
+and again
 $$
-\tilde{p}(x_{1:n} \,|\, y_{1:n}) =
+\begin{aligned}
+\tilde{p}(x_{1:n} \,|\, y_{1:n}) &=
 \frac{g(y_n \,|\, x_{n}) \, {\hat{p}(x_{1:n} \,|\, y_{1:n-1})}}
-     {\hat{p}(y_n \,|\, y_{1:n-1})}
-=
+     {\hat{p}(y_n \,|\, y_{1:n-1})} \\
+&=
+\frac{g(y_n \,|\, x_{n}) \, \frac{1}{N}\sum_{i=1}^N \delta_{\tilde{X}_{1:n}}^{(i)}(x_{1:n})}
+     {\frac{1}{N}\sum_{i=1}^N {g(y_n \,|\, \tilde{X}_n^{(i)})}} \\
+&=
+\frac{ \sum_{i=1}^N g(y_n \,|\, \tilde{X}_n^{(i)}) \, \delta_{\tilde{X}_{1:n}}^{(i)}(x_{1:n})}
+     {\sum_{i=1}^N {g(y_n \,|\, \tilde{X}_n^{(i)})}} \\
+&=
 \sum_{i=1}^N W_n^{(i)} \delta_{\tilde{X}_{1:n}^{(i)}} (x_{1:n})
+\end{aligned}
 $$
+where $W_n^{(i)} \propto g(y_n \,|\, \tilde{X}_n^{(i)})$ and $\sum_{i=1}^N W_n^{(i)} = 1$.
+
 
 3. Now sample
 $$
@@ -328,6 +322,8 @@ dimensions.
 > bigP0 :: H.Herm Double
 > bigP0 = H.trustSym $ H.ident 4
 
+With these we generate hidden and observable sample path.
+
 > carSample :: MonadRandom m =>
 >              H.Vector Double ->
 >              m (Maybe ((H.Vector Double, H.Vector Double), H.Vector Double))
@@ -336,12 +332,30 @@ dimensions.
 >   yNew <- sample $ rvar (Normal (bigH H.#> xNew) bigR)
 >   return $ Just ((xNew, yNew), xNew)
 
+> carSamples :: [(H.Vector Double, H.Vector Double)]
+> carSamples = evalState (ML.unfoldrM carSample m0) (pureMT 17)
+
 We can plot an example trajectory for the car and the noisy
 observations that are available to the smoother / filter.
 
-```{.dia height='600'}
+``` {.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 0.0))
 ```
+
+Sadly there is no equivalent to [numpy](http://www.numpy.org/) in
+Haskell. Random number packages generate
+[vectors](https://hackage.haskell.org/package/vector), for multi-rank
+arrays there is [repa](https://hackage.haskell.org/package/repa) and
+for fast matrix manipulation there is
+[hmtatrix](https://hackage.haskell.org/package/hmatrix). Thus for our
+single step path update function, we have to pass in functions to
+perform type conversion. Clearly with all the copying inherent in this
+approach, performance is not going to be great.
+
+The type synonym *ArraySmoothing* is used to denote the cloud of
+particles at each time step.
+
+> type ArraySmoothing = Repa.Array Repa.U DIM2
 
 > singleStep :: forall a . U.Unbox a =>
 >               (a -> H.Vector Double) ->
@@ -353,20 +367,15 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 >               ArraySmoothing a -> H.Vector Double ->
 >               WriterT [ArraySmoothing a] (StateT PureMT IO) (ArraySmoothing a)
 > singleStep f g bigA bigQ bigH bigR x y = do
+>   tell[x]
 >   let (Z :. ix :. jx) = extent x
 >
->   xTildeNextH <- lift $ do
->     xHatR :: Repa.Array Repa.U DIM1 a <- computeP $ Repa.slice x (Any :. jx - 1)
->     let xHatH = map f $ Repa.toList xHatR
->     xTildeNextH <- mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
->     return xTildeNextH
+>   xHatR <- lift $ computeP $ Repa.slice x (Any :. jx - 1)
+>   let xHatH = map f $ Repa.toList (xHatR  :: Repa.Array Repa.U DIM1 a)
+>   xTildeNextH <- lift $ mapM (\x -> sample $ rvar (Normal (bigA H.#> x) bigQ)) xHatH
 >
->   let systemState = map g xTildeNextH
->   tell [x]
->
->   lift $ do
 >   let xTildeNextR = Repa.fromListUnboxed (Z :. ix :. (1 :: Int)) $
->                     systemState
+>                     map g xTildeNextH
 >       xTilde = Repa.append x xTildeNextR
 >
 >       weights = map (normalPdf y bigR) $
@@ -375,15 +384,57 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
 >       totWeight = sum weights
 >       js = indices (V.map (/ totWeight) $ V.tail cumSumWeights) vs
->   let xNewV = V.map (\j -> Repa.transpose $
+>       xNewV = V.map (\j -> Repa.transpose $
 >                            Repa.reshape (Z :. (1 :: Int) :. jx + 1) $
 >                            slice xTilde (Any :. j :. All)) js
 >       xNewR = Repa.transpose $ V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
 >   computeP xNewR
 
 
-> carSamples :: [(H.Vector Double, H.Vector Double)]
-> carSamples = evalState (ML.unfoldrM carSample m0) (pureMT 17)
+The state for the car is a 4-tuple.
+
+> data SystemState a = SystemState { xPos :: a
+>                                  , yPos :: a
+>                                  , xSpd :: a
+>                                  , ySpd :: a
+>                                  }
+
+We initialize the smoother from some prior distribution.
+
+> initXHat :: StateT PureMT IO (ArraySmoothing (SystemState Double))
+> initXHat = do
+>   xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
+>   let weights = map (normalPdf y bigR) $
+>                 map (bigH H.#>) xTilde1
+>       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
+>       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
+>       js = indices (V.tail cumSumWeights) vs
+>       xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
+>               map ((\[a,b,c,d] -> SystemState a b c d) . H.toList) $
+>               V.toList $
+>               V.map ((V.fromList xTilde1) V.!) js
+>   return xHat1
+
+> smootherCar :: StateT PureMT IO
+>             (ArraySmoothing (SystemState Double)
+>             , [ArraySmoothing (SystemState Double)])
+> smootherCar = runWriterT $ do
+>   xHat1 <- lift initXHat
+>   foldM (singleStep f g bigA bigQ bigH bigR) xHat1 (take 100 $ map snd $ tail carSamples)
+
+> testCar :: IO [SystemState Double]
+> testCar = do
+>   states <- snd <$> evalStateT smootherCar (pureMT 24)
+>   let state = last states
+>   let (Z :. ix :. jx) = extent state
+>   filteringState <- computeP $ Repa.slice state (Any :. jx - 1)
+>   return $ Repa.toList (filteringState :: Repa.Array Repa.U DIM1 (SystemState Double))
+
+> test' :: IO ()
+> test' = do
+>   states <- snd <$> evalStateT smoother1a (pureMT 24)
+>   putStrLn "States"
+>   mapM_ (putStrLn . render . pPrint) states
 
 > carSample1 :: MonadRandom m =>
 >               Double ->
@@ -402,19 +453,6 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 > y1 :: Double
 > y1 = snd $ head carSamples1
 
-> initXHat :: MonadRandom m => m (ArraySmoothing SystemState)
-> initXHat = do
->   xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
->   let weights = map (normalPdf y bigR) $
->                 map (bigH H.#>) xTilde1
->       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
->       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
->       js = indices (V.tail cumSumWeights) vs
->       xHat1 = Repa.fromListUnboxed (Z :. n :. (1 :: Int)) $
->               map ((\[a,b,c,d] -> (a, b, c, d)) . H.toList) $
->               V.toList $
->               V.map ((V.fromList xTilde1) V.!) js
->   return xHat1
 
 > initXHat1 :: MonadRandom m => m (ArraySmoothing Double)
 > initXHat1 = do
@@ -429,12 +467,6 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 >               V.toList $
 >               V.map ((V.fromList xTilde1) V.!) js
 >   return xHat1
-
-> test :: IO ()
-> test = do
->   states <- snd <$> evalStateT smoother (pureMT 24)
->   putStrLn "States"
->   mapM_ (putStrLn . render . pPrint) states
 
 > n :: Int
 > n = 23
@@ -454,26 +486,18 @@ dia = image (DImage (ImageRef "diagrams/CarPosition.png") 600 600 (translationX 
 >       baz = map Repa.toList bar
 >   return baz
 
-> type SystemState = (Double, Double, Double, Double)
-
-> type ArraySmoothing = Repa.Array Repa.U DIM2
-
-> f :: (Double, Double, Double, Double) -> H.Vector Double
-> f (a, b, c, d) = H.fromList [a, b, c, d]
+> f :: SystemState Double -> H.Vector Double
+> f (SystemState a b c d) = H.fromList [a, b, c, d]
 
 > f1 :: Double -> H.Vector Double
 > f1 a = H.fromList [a]
 
-> g :: H.Vector Double -> (Double, Double, Double, Double)
-> g = (\[a,b,c,d] -> (a, b, c, d)) . H.toList
+> g :: H.Vector Double -> SystemState Double
+> g = (\[a,b,c,d] -> (SystemState a b c d)) . H.toList
 
 > g1 :: H.Vector Double -> Double
 > g1 = (\[a] -> a) . H.toList
 
-> smoother :: StateT PureMT IO (ArraySmoothing SystemState, [ArraySmoothing SystemState])
-> smoother = runWriterT $ do
->   xHat1 <- lift initXHat
->   foldM (singleStep f g bigA bigQ bigH bigR) xHat1 (take 3 $ map snd $ tail carSamples)
 
 > smoother1a :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
 > smoother1a = runWriterT $ do
@@ -555,6 +579,17 @@ multivariate normal so we create our own. This should be added to
 > instance PDF Normal (H.Vector Double) where
 >   pdf (Normal m s) = normalPdf m s
 >   logPdf (Normal m s) = normalLogPdf m s
+
+Misellaneous
+------------
+
+> derivingUnbox "SystemState"
+>     [t| forall a . (U.Unbox a) => SystemState a -> (a, a, a, a) |]
+>     [| \ (SystemState x y xdot ydot) -> (x, y, xdot, ydot) |]
+>     [| \ (x, y, xdot, ydot) -> SystemState x y xdot ydot |]
+
+> instance Pretty a => Pretty (SystemState a) where
+>   pPrint (SystemState x y xdot ydot ) = pPrint (x, y, xdot, ydot)
 
 Bibliography
 ============

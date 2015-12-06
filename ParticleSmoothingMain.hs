@@ -38,11 +38,11 @@ main = do
                 (diagFitted "Car Path and Measurements"
                  (zip x1s x2s)
                  (zip y1s y2s)
-                 (zip (map xPos uss) (map yPos uss)))
-  xss <- test1
+                 (zip (fst uss) (snd uss)))
+  xss <- testSimple
   let l = length $ head xss
   displayHeader "diagrams/Smooth.png"
                 (diagSmooth "Smoothing Degeneracy"
-                 (zip [0.0,1.0..] (take l $ map fst carSamples1))
+                 (zip [0.0,1.0..] (take l $ map fst simpleSamples))
                  (map (\xs -> zip [0.0,1.0..] xs) xss))
   putStrLn "hello"

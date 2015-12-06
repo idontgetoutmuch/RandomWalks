@@ -103,7 +103,12 @@ Haskell Preamble
 > {-# LANGUAGE ScopedTypeVariables          #-}
 > {-# LANGUAGE TemplateHaskell              #-}
 
-> module ParticleSmoothing where
+> module ParticleSmoothing
+>   ( simpleSamples
+>   , carSamples
+>   , testCar
+>   , testSimple
+>   ) where
 
 > import Data.Random.Source.PureMT
 > import Data.Random hiding ( StdNormal, Normal )
@@ -127,7 +132,6 @@ Haskell Preamble
 > import qualified Control.Monad.Loops as ML
 
 > import PrettyPrint ()
-> import Text.PrettyPrint
 > import Text.PrettyPrint.HughesPJClass ( Pretty, pPrint )
 
 > import Data.Vector.Unboxed.Deriving
@@ -322,6 +326,9 @@ dimensions.
 > bigP0 :: H.Herm Double
 > bigP0 = H.trustSym $ H.ident 4
 
+> n :: Int
+> n = 23
+
 With these we generate hidden and observable sample path.
 
 > carSample :: MonadRandom m =>
@@ -393,18 +400,18 @@ particles at each time step.
 
 The state for the car is a 4-tuple.
 
-> data SystemState a = SystemState { xPos :: a
->                                  , yPos :: a
->                                  , xSpd :: a
->                                  , ySpd :: a
+> data SystemState a = SystemState { xPos  :: a
+>                                  , yPos  :: a
+>                                  , _xSpd :: a
+>                                  , _ySpd :: a
 >                                  }
 
 We initialize the smoother from some prior distribution.
 
-> initXHat :: StateT PureMT IO (ArraySmoothing (SystemState Double))
-> initXHat = do
+> initCar :: StateT PureMT IO (ArraySmoothing (SystemState Double))
+> initCar = do
 >   xTilde1 <- replicateM n $ sample $ rvar (Normal m0 bigP0)
->   let weights = map (normalPdf y bigR) $
+>   let weights = map (normalPdf (snd $ head carSamples) bigR) $
 >                 map (bigH H.#>) xTilde1
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
 >       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
@@ -415,49 +422,77 @@ We initialize the smoother from some prior distribution.
 >               V.map ((V.fromList xTilde1) V.!) js
 >   return xHat1
 
+Now we can run the smoother.
+
 > smootherCar :: StateT PureMT IO
 >             (ArraySmoothing (SystemState Double)
 >             , [ArraySmoothing (SystemState Double)])
 > smootherCar = runWriterT $ do
->   xHat1 <- lift initXHat
+>   xHat1 <- lift initCar
 >   foldM (singleStep f g bigA bigQ bigH bigR) xHat1 (take 100 $ map snd $ tail carSamples)
 
-> testCar :: IO [SystemState Double]
+> f :: SystemState Double -> H.Vector Double
+> f (SystemState a b c d) = H.fromList [a, b, c, d]
+
+> g :: H.Vector Double -> SystemState Double
+> g = (\[a,b,c,d] -> (SystemState a b c d)) . H.toList
+
+And create inferred positions for the car which we then plot.
+
+> testCar :: IO ([Double], [Double])
 > testCar = do
 >   states <- snd <$> evalStateT smootherCar (pureMT 24)
->   let state = last states
->   let (Z :. ix :. jx) = extent state
->   filteringState <- computeP $ Repa.slice state (Any :. jx - 1)
->   return $ Repa.toList (filteringState :: Repa.Array Repa.U DIM1 (SystemState Double))
+>   let xs :: [Repa.Array Repa.D DIM2 Double]
+>       xs = map (Repa.map xPos) states
+>   sumXs :: [Repa.Array Repa.U DIM1 Double] <- mapM Repa.sumP (map Repa.transpose xs)
+>   let ixs = map extent sumXs
+>       sumLastXs = map (* (recip $ fromIntegral n)) $
+>                   zipWith (Repa.!) sumXs (map (\(Z :. x) -> Z :. (x - 1)) ixs)
+>   let ys :: [Repa.Array Repa.D DIM2 Double]
+>       ys = map (Repa.map yPos) states
+>   sumYs :: [Repa.Array Repa.U DIM1 Double] <- mapM Repa.sumP (map Repa.transpose ys)
+>   let ixsY = map extent sumYs
+>       sumLastYs = map (* (recip $ fromIntegral n)) $
+>                   zipWith (Repa.!) sumYs (map (\(Z :. x) -> Z :. (x - 1)) ixsY)
+>   return (sumLastXs, sumLastYs)
 
-> test' :: IO ()
-> test' = do
->   states <- snd <$> evalStateT smoother1a (pureMT 24)
->   putStrLn "States"
->   mapM_ (putStrLn . render . pPrint) states
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/CarPositionInf.png") 600 600 (translationX 0.0))
+```
 
-> carSample1 :: MonadRandom m =>
+So it seems our smoother does quite well at inferring the state at the
+**latest** observation, that is, when it is working as a filter. But
+what about estimates for earlier times? We should do better as we have
+observations in the past and in the future. Let's try with a simpler
+example and a smaller number of particles.
+
+First we create some samples for our simple 1 dimensional linear
+Gaussian model.
+
+> bigA1, bigQ1, bigR1, bigH1 :: Double
+> bigA1 = 0.5
+> bigQ1 = 0.1
+> bigR1 = 0.1
+> bigH1 = 1.0
+
+> simpleSample :: MonadRandom m =>
 >               Double ->
 >               m (Maybe ((Double, Double), Double))
-> carSample1 xPrev = do
->   xNew <- sample $ rvar (R.Normal (bigA1 * xPrev) 0.1 {- bigQ1 -})
+> simpleSample xPrev = do
+>   xNew <- sample $ rvar (R.Normal (bigA1 * xPrev) bigQ1)
 >   yNew <- sample $ rvar (R.Normal (bigH1 * xNew) bigR1)
 >   return $ Just ((xNew, yNew), xNew)
 
-> carSamples1 :: [(Double, Double)]
-> carSamples1 = evalState (ML.unfoldrM carSample1 0.0) (pureMT 17)
+> simpleSamples :: [(Double, Double)]
+> simpleSamples = evalState (ML.unfoldrM simpleSample 0.0) (pureMT 17)
 
-> y :: H.Vector Double
-> y = snd $ head carSamples
+Again create a prior.
 
-> y1 :: Double
-> y1 = snd $ head carSamples1
-
-
-> initXHat1 :: MonadRandom m => m (ArraySmoothing Double)
-> initXHat1 = do
->   xTilde1 <- replicateM n $ sample $ rvar $ R.Normal y1 bigR1
->   let weights = map (pdf (R.Normal y1 bigR1)) $
+> initSimple :: MonadRandom m => m (ArraySmoothing Double)
+> initSimple = do
+>   let y = snd $ head simpleSamples
+>   xTilde1 <- replicateM n $ sample $ rvar $ R.Normal y bigR1
+>   let weights = map (pdf (R.Normal y bigR1)) $
 >                 map (bigH1 *) xTilde1
 >       totWeight = sum weights
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
@@ -468,48 +503,40 @@ We initialize the smoother from some prior distribution.
 >               V.map ((V.fromList xTilde1) V.!) js
 >   return xHat1
 
-> n :: Int
-> n = 23
+Now we can run the smoother.
 
-> bigA1 = 0.5
-> bigQ1 = 0.1
-> bigR1 = 0.1
-> bigH1 = 1.0
-
-> test1 :: IO [[Double]]
-> test1 = do
->   states <- snd <$> evalStateT smoother1a (pureMT 24)
->   let foo :: Int -> IO (Repa.Array Repa.U DIM1 Double)
->       foo i = computeP $ Repa.slice (last states) (Any :. i :. All)
->   bar <- mapM foo [0..22]
->   let baz :: [[Double]]
->       baz = map Repa.toList bar
->   return baz
-
-> f :: SystemState Double -> H.Vector Double
-> f (SystemState a b c d) = H.fromList [a, b, c, d]
+> smootherSimple :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
+> smootherSimple = runWriterT $ do
+>   xHat1 <- lift initSimple
+>   foldM (singleStep f1 g1 ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1^2])
+>                           ((1 H.>< 1) [bigH1]) (H.trustSym $ (1 H.>< 1) [bigR1^2]))
+>         xHat1
+>         (take 20 $ map H.fromList $ map return . map snd $ tail simpleSamples)
 
 > f1 :: Double -> H.Vector Double
 > f1 a = H.fromList [a]
 
-> g :: H.Vector Double -> SystemState Double
-> g = (\[a,b,c,d] -> (SystemState a b c d)) . H.toList
-
 > g1 :: H.Vector Double -> Double
 > g1 = (\[a] -> a) . H.toList
 
+And finally we can look at the paths not just the means of the
+marginal distributions at the latest observation time.
 
-> smoother1a :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
-> smoother1a = runWriterT $ do
->   xHat1 <- lift initXHat1
->   foldM (singleStep f1 g1 ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1^2])
->                           ((1 H.>< 1) [bigH1]) (H.trustSym $ (1 H.>< 1) [bigR1^2]))
->         xHat1
->         (take 20 $ map H.fromList $ map return . map snd $ tail carSamples1)
+> testSimple :: IO [[Double]]
+> testSimple = do
+>   states <- snd <$> evalStateT smootherSimple (pureMT 24)
+>   let path :: Int -> IO (Repa.Array Repa.U DIM1 Double)
+>       path i = computeP $ Repa.slice (last states) (Any :. i :. All)
+>   paths <- mapM path [0..n - 1]
+>   return $ map Repa.toList paths
 
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/Smooth.png") 600 600 (translationX 0.0))
 ```
+
+We can see that at some point in the past all the current particles
+have one ancestor. The marginals of the smoothing distribution (at
+some point in the past) have collapsed on to one particle.
 
 Notes
 =====

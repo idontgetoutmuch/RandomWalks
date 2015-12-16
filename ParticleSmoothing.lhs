@@ -233,20 +233,24 @@ Algorithm
 The idea is to simulate paths using the recursion we derived above.
 
 
-1. At time $n-1$ we have an approximating distribution
+At time $n-1$ we have an approximating distribution
+
 $$
 \hat{p}(x_{1:n-1} \,|\, y_{1:n-1}) = \frac{1}{N}\sum_{i=1}^N \delta_{X_{1:n-1}}^{(i)}(x_{1:n-1})
 $$
 
-2. Sample $\tilde{X}_n^{(i)} \sim f(\centerdot \,|\, X_{n-1}^{(i)})$
+Sample $\tilde{X}_n^{(i)} \sim f(\centerdot \,|\, X_{n-1}^{(i)})$
 and set $\tilde{X}_{1:n}^{(i)} = (\tilde{X}_{1:n-1}^{(i)},
 \tilde{X}_n^{(i)})$. We then have an approximation of the prediction
-step
+step.
+
 $$
 \hat{p}(x_{1:n} \,|\, y_{1:n-1}) =
 \frac{1}{N}\sum_{i=1}^N \delta_{\tilde{X}_{1:n}}^{(i)}(x_{1:n})
 $$
+
 Substituting
+
 $$
 \begin{aligned}
 {\hat{p}(y_n \,|\, y_{1:n-1})} &=
@@ -257,7 +261,9 @@ $$
 \frac{1}{N}\sum_{i=1}^N {g(y_n \,|\, \tilde{X}_n^{(i)})}
 \end{aligned}
 $$
+
 and again
+
 $$
 \begin{aligned}
 \tilde{p}(x_{1:n} \,|\, y_{1:n}) &=
@@ -273,10 +279,11 @@ $$
 \sum_{i=1}^N W_n^{(i)} \delta_{\tilde{X}_{1:n}^{(i)}} (x_{1:n})
 \end{aligned}
 $$
+
 where $W_n^{(i)} \propto g(y_n \,|\, \tilde{X}_n^{(i)})$ and $\sum_{i=1}^N W_n^{(i)} = 1$.
 
+Now sample
 
-3. Now sample
 $$
 X_{1:n}^{(i)} \sim \tilde{p}(x_{1:n} \,|\, y_{1:n})
 $$

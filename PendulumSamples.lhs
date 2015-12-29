@@ -78,8 +78,10 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 
 > import           MultivariateNormal
 
-> import qualified Data.Vector.Unboxed as U
+> import qualified Data.Vector.Unboxed as V
 > import           Data.Vector.Unboxed.Deriving
+
+> import           Data.Bits ( shiftR )
 
 
 > deltaT, g :: Double
@@ -170,33 +172,36 @@ observations are no longer symmetrical about the actuals.
 dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX 0.0))
 ```
 
+> nParticles :: Int
+> nParticles = 100
+
 > data SystemState a = SystemState { x1  :: a, x2  :: a }
 >   deriving Show
 
 > newtype SystemObs a = SystemObs { y1  :: a }
 >   deriving Show
 
-> type Particles a = U.Vector a
+> type Particles a = V.Vector a
 
 > stateUpdate :: MonadRandom m =>
 >           Particles (SystemState Double) ->
 >           m (Particles (SystemState Double))
 > stateUpdate xPrevs = do
->   let ix = U.length xPrevs
+>   let ix = V.length xPrevs
 >
->   let x1Prevs = U.map x1 xPrevs
->       x2Prevs = U.map x2 xPrevs
+>   let x1Prevs = V.map x1 xPrevs
+>       x2Prevs = V.map x2 xPrevs
 >
 >   eta <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ')
 >
->   let x1 = U.zipWith (\x1Prev x2Prev -> x1Prev + x2Prev * deltaT) x1Prevs x2Prevs
->       x2 = U.zipWith (\x1Prev x2Prev -> x2Prev - g * sin (x1Prev * deltaT)) x1Prevs x2Prevs
+>   let x1 = V.zipWith (\x1Prev x2Prev -> x1Prev + x2Prev * deltaT) x1Prevs x2Prevs
+>       x2 = V.zipWith (\x1Prev x2Prev -> x2Prev - g * sin (x1Prev * deltaT)) x1Prevs x2Prevs
 >
->   return (U.zipWith SystemState x1 x2)
+>   return (V.zipWith SystemState x1 x2)
 
 > obsUpdate :: Particles (SystemState Double) ->
 >              Particles (SystemObs Double)
-> obsUpdate xs = U.map (SystemObs . sin . x1) xs
+> obsUpdate xs = V.map (SystemObs . sin . x1) xs
 
 > weight :: forall n . KnownNat n =>
 >           (SystemObs Double -> R n) ->
@@ -211,30 +216,56 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 >   (SystemObs Double -> SystemObs Double -> Double) ->
 >   Particles (SystemState Double) ->
 >   SystemObs Double ->
->   m (Particles (SystemState Double), Particles (SystemObs Double))
+>   m (Particles (SystemState Double))
 > oneFilteringStep stateUpdate obsUpdate weight statePrevs obs = do
 >   stateNews <- stateUpdate statePrevs
 >   let obsNews = obsUpdate stateNews
->   let weights :: U.Vector Double
->       weights = U.map (weight obs) obsNews
->       totWeight = U.sum weights
->   let normalisedWeights = U.map (/totWeight) weights
->   return (stateNews, obsNews)
+>   let weights = V.map (weight obs) obsNews
+>       totWeight = V.sum weights
+>   let normalisedWeights = V.map (/totWeight) weights
+>       cumSumWeights = V.tail $ V.scanl (+) 0 normalisedWeights
+>   vs <- V.replicateM nParticles (sample $ uniform 0.0 totWeight)
+>   let js = indices cumSumWeights vs
+>       stateTildes = V.map (stateNews V.!) js
+>   return stateTildes
 
->       -- cumSumWeights = V.tail $ V.scanl (+) 0 normWeights
 
 > test :: MonadRandom m =>
 >         Particles (SystemState Double) ->
 >         SystemObs Double ->
->         m (Particles (SystemState Double), Particles (SystemObs Double))
+>         m (Particles (SystemState Double))
 > test = oneFilteringStep stateUpdate obsUpdate (weight undefined bigR')
 
+Notes
+=====
+
+Helpers for the Inverse CDF
+---------------------------
+
+That these are helpers for the inverse CDF is delayed to another blog
+post.
+
+> indices :: V.Vector Double -> V.Vector Double -> V.Vector Int
+> indices bs xs = V.map (binarySearch bs) xs
+
+> binarySearch :: (V.Unbox a, Ord a) =>
+>                 V.Vector a -> a -> Int
+> binarySearch vec x = loop 0 (V.length vec - 1)
+>   where
+>     loop !l !u
+>       | u <= l    = l
+>       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
+>       where k = l + (u - l) `shiftR` 1
+
+Other
+-----
+
 > derivingUnbox "SystemState"
->     [t| forall a . U.Unbox a => SystemState a -> (a, a) |]
+>     [t| forall a . V.Unbox a => SystemState a -> (a, a) |]
 >     [| \ x -> (x1 x, x2 x) |]
 >     [| \ (u, v) -> SystemState u v |]
 
 > derivingUnbox "SystemObs"
->     [t| forall a . U.Unbox a => SystemObs a -> a |]
+>     [t| forall a . V.Unbox a => SystemObs a -> a |]
 >     [| \ x -> y1 x |]
 >     [| \ u -> SystemObs u |]

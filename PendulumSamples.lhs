@@ -70,9 +70,13 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 > import           Data.Random.Source.PureMT ( pureMT )
 > import           Control.Monad.State ( evalState, replicateM )
 > import qualified Control.Monad.Loops as ML
+> import           Control.Monad.Writer ( tell, WriterT, lift,
+>                                         runWriterT
+>                                       )
 > import           Numeric.LinearAlgebra.Static
 >                  ( R, vector, Sym,
->                    headTail, matrix, sym
+>                    headTail, matrix, sym,
+>                    diag
 >                  )
 > import           GHC.TypeLits
 
@@ -173,7 +177,7 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 ```
 
 > nParticles :: Int
-> nParticles = 100
+> nParticles = 10
 
 > data SystemState a = SystemState { x1  :: a, x2  :: a }
 >   deriving Show
@@ -183,25 +187,39 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 
 > type Particles a = V.Vector a
 
+> (.+), (.*), (.-) :: (V.Unbox a, Num a) => V.Vector a -> V.Vector a -> V.Vector a
+> (.+) = V.zipWith (+)
+> (.*) = V.zipWith (*)
+> (.-) = V.zipWith (-)
+
 > stateUpdate :: MonadRandom m =>
->           Particles (SystemState Double) ->
->           m (Particles (SystemState Double))
-> stateUpdate xPrevs = do
+>                Sym 2 ->
+>                Particles (SystemState Double) ->
+>                m (Particles (SystemState Double))
+> stateUpdate bigQ xPrevs = do
 >   let ix = V.length xPrevs
 >
 >   let x1Prevs = V.map x1 xPrevs
 >       x2Prevs = V.map x2 xPrevs
 >
->   eta <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ')
+>   etas <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ)
+>   let eta1s, eta2s :: V.Vector Double
+>       eta1s = V.fromList $ map (fst . headTail) etas
+>       eta2s = V.fromList $ map (fst . headTail . snd . headTail) etas
 >
->   let x1 = V.zipWith (\x1Prev x2Prev -> x1Prev + x2Prev * deltaT) x1Prevs x2Prevs
->       x2 = V.zipWith (\x1Prev x2Prev -> x2Prev - g * sin (x1Prev * deltaT)) x1Prevs x2Prevs
+>   let deltaTs = V.replicate ix deltaT
+>       gs = V.replicate ix g
+>       x1 = x1Prevs .+ (x2Prevs .* deltaTs) .+ eta1s
+>       x2 = x2Prevs .- (gs .* V.map sin (x1Prevs .* deltaTs)) .+ eta2s
 >
 >   return (V.zipWith SystemState x1 x2)
 
 > obsUpdate :: Particles (SystemState Double) ->
 >              Particles (SystemObs Double)
 > obsUpdate xs = V.map (SystemObs . sin . x1) xs
+
+> f :: SystemObs Double -> R 1
+> f = vector . pure . y1
 
 > weight :: forall n . KnownNat n =>
 >           (SystemObs Double -> R n) ->
@@ -216,25 +234,41 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 >   (SystemObs Double -> SystemObs Double -> Double) ->
 >   Particles (SystemState Double) ->
 >   SystemObs Double ->
->   m (Particles (SystemState Double))
+>   WriterT Log m (Particles (SystemState Double))
 > oneFilteringStep stateUpdate obsUpdate weight statePrevs obs = do
->   stateNews <- stateUpdate statePrevs
+>   tell [(V.sum (V.map x1 statePrevs) / fromIntegral nParticles,
+>          V.sum (V.map x2 statePrevs) / fromIntegral nParticles)]
+>   stateNews <- lift $ stateUpdate statePrevs
 >   let obsNews = obsUpdate stateNews
->   let weights = V.map (weight obs) obsNews
->       totWeight = V.sum weights
->   let normalisedWeights = V.map (/totWeight) weights
->       cumSumWeights = V.tail $ V.scanl (+) 0 normalisedWeights
->   vs <- V.replicateM nParticles (sample $ uniform 0.0 totWeight)
+>   let weights       = V.map (weight obs) obsNews
+>       cumSumWeights = V.tail $ V.scanl (+) 0 weights
+>       totWeight     = V.last cumSumWeights
+>   vs <- lift $ V.replicateM nParticles (sample $ uniform 0.0 totWeight)
 >   let js = indices cumSumWeights vs
 >       stateTildes = V.map (stateNews V.!) js
 >   return stateTildes
 
+> bigP :: Sym 2
+> bigP = sym $ diag 0.1
 
-> test :: MonadRandom m =>
->         Particles (SystemState Double) ->
->         SystemObs Double ->
->         m (Particles (SystemState Double))
-> test = oneFilteringStep stateUpdate obsUpdate (weight undefined bigR')
+> initParticles :: MonadRandom m =>
+>                  m (Particles (SystemState Double))
+> initParticles = V.replicateM nParticles $ do
+>   r <- sample $ rvar (MultivariateNormal 0.0 bigP)
+>   let x1 = fst $ headTail r
+>       x2 = fst $ headTail $ snd $ headTail r
+>   return $ SystemState { x1 = x1, x2 = x2}
+
+> type Log = [(Double, Double)]
+
+> test :: Int -> Log
+> test n = snd $ evalState action (pureMT 19)
+>   where
+>     action = runWriterT $ do
+>       xs <- lift $ initParticles
+>       V.foldM (oneFilteringStep (stateUpdate bigQ') obsUpdate (weight f bigR'))
+>             xs
+>             (V.fromList $ map (SystemObs . fst . headTail . snd) (take n pendulumSamples'))
 
 Notes
 =====

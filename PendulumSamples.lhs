@@ -66,6 +66,7 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >                        , testFiltering
 >                        , testSmoothing
 >                        , testFilteringG
+>                        , testSmoothingG
 >                        ) where
 
 > import           Data.Random hiding ( StdNormal, Normal )
@@ -287,7 +288,32 @@ $$
 \end{aligned}
 $$
 
+> inner :: MonadRandom m =>
+>           (Particles (a) -> V.Vector (a)) ->
+>           (a -> a -> Double) ->
+>           a ->
+>           Particles (a) ->
+>           WriterT (Particles (a)) m (a)
+> inner stateUpdate weight smple statePrevs = do
+>   let mus = stateUpdate statePrevs
+>       weights =  V.map (weight smple) mus
+>       cumSumWeights = V.tail $ V.scanl (+) 0 weights
+>       totWeight     = V.last cumSumWeights
+>   v <- lift $ sample $ uniform 0.0 totWeight
+>   let ix = binarySearch cumSumWeights v
+>       xnNew = statePrevs V.! ix
+>   tell $ V.singleton xnNew
+>   return $ xnNew
 
+> runInnerG :: MonadRandom m =>
+>              (Int -> V.Vector (Particles a)) ->
+>              (a -> Particles a -> WriterT (Particles a) m a) ->
+>              Int -> m (a, V.Vector a)
+> runInnerG filterEstss inner n = do
+>   let sxs = filterEstss n
+>   ix <- sample $ uniform 0 (nParticles - 1)
+>   let xn = (V.head sxs) V.! ix
+>   runWriterT $ V.foldM inner xn sxs
 
 > h :: SystemState Double -> R 2
 > h u = vector [x1 u , x2 u]
@@ -295,34 +321,12 @@ $$
 > filterEstss :: Int -> V.Vector (Particles (SystemState Double))
 > filterEstss n = V.reverse $ V.fromList $ test n
 
-> inner :: MonadRandom m =>
->          SystemState Double ->
->          V.Vector (SystemState Double) ->
->          WriterT (V.Vector (SystemState Double)) m (SystemState Double)
-> inner xn sx = do
->   let mus = stateUpdate' sx
->       weights =  V.map (weight h bigQ' xn) mus
->       cumSumWeights = V.tail $ V.scanl (+) 0 weights
->       totWeight     = V.last cumSumWeights
->   v <- lift $ sample $ uniform 0.0 totWeight
->   let ix = binarySearch cumSumWeights v
->       xnNew = sx V.! ix
->   tell $ V.singleton xnNew
->   return $ xnNew
-
-> runInner :: MonadRandom m =>
->             Int -> m (SystemState Double, V.Vector (SystemState Double))
-> runInner n = do
->   let sxs = filterEstss n
->   ix <- sample $ uniform 0 (nParticles - 1)
->   let xn = (V.head sxs) V.! ix
->   runWriterT $ V.foldM inner xn sxs
-
 > testSmoothing :: Int -> Int -> [Double]
 > testSmoothing m n = V.toList $ evalState action (pureMT 23)
 >   where
 >     action = do
->       xss <- V.replicateM n (snd <$> runInner m)
+>       xss <- V.replicateM n $
+>              snd <$> (runInnerG filterEstss (inner stateUpdate' (weight h bigQ')) m)
 >       let yss = V.fromList $ map V.fromList $
 >                 transpose $
 >                 V.toList $ V.map (V.toList) $
@@ -413,8 +417,23 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >
 >   return (V.zipWith3 SystemStateG x1s x2s x3s)
 
+> stateUpdateG' :: Particles (SystemStateG Double) ->
+>                  Particles (SystemStateG Double)
+> stateUpdateG' xPrevs = V.zipWith3 SystemStateG x1s x2s x3s
+>   where
+>     ix = V.length xPrevs
+>
+>     x1Prevs = V.map gx1 xPrevs
+>     x2Prevs = V.map gx2 xPrevs
+>     x3Prevs = V.map gx3 xPrevs
+>
+>     deltaTs = V.replicate ix deltaT
+>     x1s = x1Prevs .+ (x2Prevs .* deltaTs)
+>     x2s = x2Prevs .- (x3Prevs .* (V.map sin x1Prevs) .* deltaTs)
+>     x3s = x3Prevs
+
 > mG :: R 3
-> mG = vector [1.6, 0.0, 2.0]
+> mG = vector [1.6, 0.0, 8.00]
 
 > bigPg :: Sym 3
 > bigPg = sym $ matrix [
@@ -430,7 +449,7 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 > qc1G = 0.01
 
 > sigmaG :: Double
-> sigmaG = 0.1
+> sigmaG = 5.0e-3
 
 > bigQgl :: [Double]
 > bigQgl = [ qc1G * deltaT^3 / 3, qc1G * deltaT^2 / 2, 0.0,
@@ -452,7 +471,7 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 
 
 > oneFilteringStepG ::
->   (Monoid [Particles a], MonadRandom m, Show a) =>
+>   (Monoid [Particles a], MonadRandom m) =>
 >   (Particles a -> m (Particles a)) ->
 >   (Particles a -> (Particles (SystemObs Double))) ->
 >   (SystemObs Double -> SystemObs Double -> Double) ->
@@ -470,24 +489,6 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   let js = indices cumSumWeights vs
 >       stateTildes = V.map (stateNews V.!) js
 >   return stateTildes
-
-> innerG :: MonadRandom m =>
->           (Particles (SystemState Double) -> V.Vector (SystemState Double)) ->
->           Particles (SystemState Double) ->
->           SystemState Double ->
->           WriterT (Particles (SystemState Double)) m (SystemState Double)
-> innerG stateUpdate statePrevs smple = do
->   let mus = stateUpdate statePrevs
->       weights =  V.map (weight h bigQ' smple) mus
->       cumSumWeights = V.tail $ V.scanl (+) 0 weights
->       totWeight     = V.last cumSumWeights
->   v <- lift $ sample $ uniform 0.0 totWeight
->   let ix = binarySearch cumSumWeights v
->       xnNew = statePrevs V.! ix
->   tell $ V.singleton xnNew
->   return $ xnNew
-
-(weight h bigQ' smple)
 
 > obsUpdateG :: Particles (SystemStateG Double) ->
 >              Particles (SystemObs Double)
@@ -507,6 +508,27 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 > testFilteringG :: Int -> [Double]
 > testFilteringG n = map ((/ (fromIntegral nParticles)). sum . V.map gx3) (testG n)
 
+> filterGEstss :: Int -> V.Vector (Particles (SystemStateG Double))
+> filterGEstss n = V.reverse $ V.fromList $ testG n
+
+> hG :: SystemStateG Double -> R 3
+> hG u = vector [gx1 u , gx2 u, gx3 u]
+
+> testSmoothingG :: Int -> Int -> ([Double], [Double], [Double])
+> testSmoothingG m n = (\(x, y, z) -> (V.toList x, V.toList y, V.toList z))  $
+>                      evalState action (pureMT 23)
+>   where
+>     action = do
+>       xss <- V.replicateM n $
+>              snd <$> (runInnerG filterGEstss (inner stateUpdateG' (weight hG bigQg)) m)
+>       let yss = V.fromList $ map V.fromList $
+>                 transpose $
+>                 V.toList $ V.map (V.toList) $
+>                 xss
+>       return ( V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx1) yss
+>              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx2) yss
+>              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx3) yss
+>              )
 
 notes
 =====

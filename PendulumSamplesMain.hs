@@ -116,9 +116,9 @@ main = do
   --     obs    = map fst $ map headTail $ map snd xs
   -- displayHeader "diagrams/PendulumObs.png"
   --               (diagFitted "Pendulum" 0.04 (zip [0,1..] states) (zip [0,1..] obs))
-  -- let xs = take 500 $ pendulumSamples'
-  --     states = map fst $ map headTail $ map fst xs
-  --     obs    = map fst $ map headTail $ map snd xs
+  let xs = take 500 $ pendulumSamples'
+      states = map fst $ map headTail $ map fst xs
+      obs    = map fst $ map headTail $ map snd xs
   -- displayHeader "diagrams/PendulumObs1.png"
   --               (diagFitted "Pendulum" 2.5 (zip [0,1..] states) (zip [0,1..] obs))
   -- let x1s = testFiltering 500
@@ -136,4 +136,14 @@ main = do
   let x3s = testFilteringG 1000
   displayHeader "diagrams/PendulumG.png"
                 (diagFitted "Gravity" 12.0 (zip [0,1..] (replicate 1000 9.81)) (zip [0,1..] x3s))
+  let us = testSmoothingG 500 20
+      x1s = reverse $ (\(v, _, _) -> v) us
+      x3s = reverse $ (\(_, _, v) -> v) us
+  displayHeader "diagrams/PendulumSmoothedG20.png"
+                (diagFitted "Smoothed Gravity" 12.0 (zip [0,1..] (replicate 500 9.81)) (zip [0,1..] x3s))
+  displayHeader "diagrams/PendulumSmoothedG1X20.png"
+                (diagEstimated "Smoothed Pendulum"
+                               (zip [0,1..] states)
+                               (zip [0,1..] obs)
+                               (zip [0,1..] x1s))
   putStrLn "Hello"

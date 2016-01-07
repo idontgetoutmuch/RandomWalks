@@ -34,6 +34,7 @@ dim(y) <- c(nSamples,1)
 x[1,1] = m0[1]
 x[1,2] = m0[2]
 
+## x is the state and y is the observable
 for (i in 1:nSamples) {
     x[i+1,1] <- x[i,1] + x[i,2] * deltaT
     x[i+1,2] <- x[i,2] - g * (sin(x[i,1])) * deltaT
@@ -46,9 +47,11 @@ plot(y[,1])
 
 samples <- stan(file = 'PendulumInfer.stan',
                 data = list (T  = nSamples,
-                             y = x[2:101,],
+                             y0 = x[1,],
+                             y  = x[2:101,],
                              t0 = 0.0,
-                             ts = seq(0.01,nSamples/100,0.01)
+                             ts = seq(0.01,nSamples/100,0.01),
+                             sigma = c(0.03, 0.15)
                              ),
                 chains = 4,
                 iter =1000

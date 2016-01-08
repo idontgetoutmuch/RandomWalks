@@ -45,14 +45,13 @@ for (i in 1:nSamples) {
 samples <- stan(file = 'PendulumInfer.stan',
                 data = list (T  = nSamples,
                              y0 = x[1,],
-                             y  = y, ## x[2:101,1],
+                             y  = y,
                              t0 = 0.0,
                              ts = seq(0.01,nSamples/100,0.01)
-                             ## ts = seq(0.01,nSamples/100,0.01),
-                             ## sigma = array(0.15,dim=1)
                              ),
-                chains = 1,
-                iter =4000
+                chains = 4,
+                iter = 4000,
+                warmup = 2000
                 )
 
 s <- extract(samples,permuted=FALSE)

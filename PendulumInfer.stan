@@ -13,10 +13,9 @@ functions {
 data {
   int<lower=1> T;
   real y0[2];
-  real y[T,2];
+  real y[T];
   real t0;
   real ts[T];
-  vector<lower=0>[2] sigma;
 }
 transformed data {
   real x_r[0];
@@ -24,12 +23,16 @@ transformed data {
 }
 parameters {
   real theta[1];
+  vector<lower=0>[1] sigma;
 }
 model {
   real y_hat[T,2];
+  real z_hat[T];
   theta ~ normal(0,1);
+  sigma ~ cauchy(0,2.5);
   y_hat <- integrate_ode(pendulum, y0, t0, ts, theta, x_r, x_i);
   for (t in 1:T) {
-    y[t] ~ normal(y_hat[t], sigma);
+    z_hat[t] <- sin(y_hat[t,1]);
+    y[t] ~ normal(z_hat[t], sigma);
   }
 }

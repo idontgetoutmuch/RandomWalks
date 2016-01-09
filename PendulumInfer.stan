@@ -13,7 +13,7 @@ functions {
 data {
   int<lower=1> T;
   real y0[2];
-  real y[T];
+  real z[T];
   real t0;
   real ts[T];
 }
@@ -33,6 +33,6 @@ model {
   y_hat <- integrate_ode(pendulum, y0, t0, ts, theta, x_r, x_i);
   for (t in 1:T) {
     z_hat[t] <- sin(y_hat[t,1]);
-    y[t] ~ normal(z_hat[t], sigma);
+    z[t] ~ normal(z_hat[t], sigma);
   }
 }

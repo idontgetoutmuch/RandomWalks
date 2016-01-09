@@ -1,11 +1,12 @@
 library(rstan)
-library(mvtnorm)
 
 qc1 = 0.0001
 deltaT = 0.01
 nSamples = 100
-m0 = c(0.016, 0)
+m0 = c(1.07, 0)
 g = 9.81
+t0 = 0.0
+ts = seq(deltaT,nSamples * deltaT,deltaT)
 
 bigQ = matrix(c(qc1 * deltaT^3 / 3, qc1 * deltaT^2 / 2,
                 qc1 * deltaT^2 / 2,       qc1 * deltaT
@@ -20,44 +21,69 @@ bigR = matrix(c(0.1),
               ncol = 1,
               byrow = TRUE)
 
-etas <- rmvnorm(n=nSamples,mean=c(0.0,0.0),sigma=bigQ)
-epsilons <- rmvnorm(n=nSamples,mean=c(0.0),sigma=bigR)
-
-x <- matrix()
-length(x) <- 2 * (nSamples + 1)
-dim(x) <- c(nSamples + 1, 2)
-
-y <- vector()
-length(y) <- 1 * nSamples
-dim(y) <- c(nSamples)
-
-x[1,1] = m0[1]
-x[1,2] = m0[2]
-
-## x is the state and y is the observable
-for (i in 1:nSamples) {
-    x[i+1,1] <- x[i,1] + x[i,2] * deltaT
-    x[i+1,2] <- x[i,2] - g * (sin(x[i,1])) * deltaT
-    x[i+1,] <- x[i+1,] + etas[i,]
-    y[i] <- sin(x[i+1,1]) ## + epsilons[i,1]
-    }
-
-samples <- stan(file = 'PendulumInfer.stan',
+## Generate the angle and angular velocity of pendulum with added noise
+samples <- stan(file = 'Pendulum.stan',
                 data = list (T  = nSamples,
-                             y0 = x[1,],
-                             y  = y,
-                             t0 = 0.0,
-                             ts = seq(0.01,nSamples/100,0.01)
+                             y0 = m0,
+                             t0 = t0,
+                             ts = ts,
+                             theta = array(g, dim = 1),
+                             sigma = c(bigQ[1,1], bigQ[2,2])
                              ),
-                chains = 4,
-                iter = 4000,
-                warmup = 2000
+                algorithm="Fixed_param",
+                seed = 42,
+                chains = 1,
+                iter =1
                 )
 
+## We can only observe the horizontal displacement
 s <- extract(samples,permuted=FALSE)
-print(dimnames(s))
-plot(s[1,1,1:nSamples])
+zStan <- sin(s[1,1,1:nSamples])
 
-plot(x[,1])
-plot(y)
+estimates <- stan(file = 'PendulumInfer.stan',
+                  data = list (T  = nSamples,
+                               y0 = m0,
+                               z  = zStan,
+                               t0 = t0,
+                               ts = ts
+                               ),
+                  seed = 42,
+                  chains = 1,
+                  iter = 1000,
+                  warmup = 500
+                )
 
+set.seed(42)
+etas <- rmvnorm(n=nSamples,mean=c(0.0,0.0),sigma=bigQ)
+
+y <- matrix()
+length(y) <- 2 * (nSamples + 1)
+dim(y) <- c(nSamples + 1, 2)
+
+z <- vector()
+length(z) <- 1 * nSamples
+dim(z) <- c(nSamples)
+
+y[1,1] = m0[1]
+y[1,2] = m0[2]
+
+## y is the state and z is the observable
+for (i in 1:nSamples) {
+    y[i+1,1] <- y[i,1] + y[i,2] * deltaT
+    y[i+1,2] <- y[i,2] - g * (sin(y[i,1])) * deltaT
+    y[i+1,] <- y[i+1,] + etas[i,]
+    z[i] <- sin(y[i+1,1])
+    }
+
+estimatesfromR <- stan(file = 'PendulumInfer.stan',
+                       data = list (T  = nSamples,
+                                    y0 = m0,
+                                    z  = z,
+                                    t0 = t0,
+                                    ts = ts
+                                    ),
+                       seed = 42,
+                       chains = 1,
+                       iter = 1000,
+                       warmup = 500
+                       )

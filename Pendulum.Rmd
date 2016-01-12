@@ -1,0 +1,167 @@
+Introduction
+============
+
+The [equation of
+motion](https://en.wikipedia.org/wiki/Pendulum_(mathematics)\#Simple_gravity_pendulum)
+for a pendulum of unit length subject to [Gaussian white
+noise](https://en.wikipedia.org/wiki/White_noise#Mathematical_definitions)
+is
+
+$$
+\frac{\mathrm{d}^2\alpha}{\mathrm{d}t^2} = -g\sin\alpha + w(t)
+$$
+
+We can discretize this via the usual [Euler method](https://en.wikipedia.org/wiki/Euler_method)
+
+$$
+\begin{bmatrix}
+x_{1,i} \\
+x_{2,i}
+\end{bmatrix}
+=
+\begin{bmatrix}
+x_{1,i-1} + x_{2,i-1}\Delta t \\
+x_{2,i-1} - g\sin x_{1,i-1}\Delta t
+\end{bmatrix}
++
+\mathbf{q}_{i-1}
+$$
+
+where $q_i \sim {\mathcal{N}}(0,Q)$ and
+
+$$
+Q
+=
+\begin{bmatrix}
+\frac{q^c \Delta t^3}{3} & \frac{q^c \Delta t^2}{2} \\
+\frac{q^c \Delta t^2}{2} & {q^c \Delta t}
+\end{bmatrix}
+$$
+
+The explanation of the precise form of the covariance matrix will be
+the subject of another blog post; for the purpose of exposition of
+using Stan and in particular Stan's ability to handle ODEs, this
+detail is not important.
+
+Let's generate some samples using Stan but rather than generating
+exactly the model we have given above, instead let's solve the
+differential equation and then add some noise. Of course this won't
+quite give us samples from the model the parameters of which we wish
+to estimate but it will allow us to use Stan's ODE solving capability.
+
+Here's the Stan
+
+~~~~{.CPP include="Pendulum.stan"}
+~~~~
+
+And here's the R to invoke it
+
+```{r}
+library(rstan)
+library(mvtnorm)
+
+qc1 = 0.0001
+deltaT = 0.01
+nSamples = 100
+m0 = c(1.6, 0)
+g = 9.81
+t0 = 0.0
+ts = seq(deltaT,nSamples * deltaT,deltaT)
+
+bigQ = matrix(c(qc1 * deltaT^3 / 3, qc1 * deltaT^2 / 2,
+                qc1 * deltaT^2 / 2,       qc1 * deltaT
+                ),
+              nrow = 2,
+              ncol = 2,
+              byrow = TRUE
+              )
+
+samples <- stan(file = 'Pendulum.stan',
+                data = list (
+                    T  = nSamples,
+                    y0 = m0,
+                    t0 = t0,
+                    ts = ts,
+                    theta = array(g, dim = 1),
+                    sigma = c(bigQ[1,1], bigQ[2,2]),
+                    refresh = -1
+                ),
+                algorithm="Fixed_param",
+                seed = 42,
+                chains = 1,
+                iter =1
+                )
+```
+
+We can plot the angle the pendulum subtends to the vertical over
+time. Note that this is not very noisy.
+
+```{r}
+s <- extract(samples,permuted=FALSE)
+plot(s[1,1,1:100])
+```
+
+Now let us suppose that we don't know the value of $g$.
+
+A quote:
+
+> Markdown is not LaTeX.
+
+To compile me, run this in R:
+
+    library(knitr)
+    knit('001-minimal.Rmd')
+
+    
+See [output here](https://github.com/yihui/knitr-examples/blob/master/001-minimal.md).
+
+## code chunks
+
+A _paragraph_ here. A code chunk below (remember the three backticks):
+
+```{r}
+1+1
+.4-.7+.3 # what? it is not zero!
+```
+
+## graphics
+
+It is easy.
+
+```{r}
+plot(1:10)
+hist(rnorm(1000))
+```
+
+## inline code
+
+Yes I know the value of pi is `r pi`, and 2 times pi is `r 2*pi`.
+
+## math
+
+Sigh. You cannot live without math equations. OK, here we go: $\alpha+\beta=\gamma$. Note this is not supported by native markdown. You probably want to try RStudio, or at least the R package **markdown**, or the function `knitr::knit2html()`.
+
+## nested code chunks
+
+You can write code within other elements, e.g. a list
+
+1. foo is good
+    ```{r}
+    strsplit('hello indented world', ' ')[[1]]
+    ```
+2. bar is better
+
+Or inside blockquotes:
+
+> Here is a quote, followed by a code chunk:
+>
+> ```{r}
+> x = 1:10
+> rev(x^2)
+> ```
+
+## conclusion
+
+Nothing fancy. You are ready to go. When you become picky, go to the [knitr website](http://yihui.name/knitr/).
+
+![knitr logo](http://yihui.name/knitr/images/knit-logo.png)

@@ -40,8 +40,20 @@ $$
 
 The explanation of the precise form of the covariance matrix will be
 the subject of another blog post; for the purpose of exposition of
-using Stan and in particular Stan's ability to handle ODEs, this
+using Stan and, in particular, Stan's ability to handle ODEs, this
 detail is not important.
+
+Instead of assuming that we know $g$ let us take it to be unknown and
+that we wish to infer its value using the pendulum as our experimental
+apparatus.
+
+[Stan](https://en.wikipedia.org/wiki/Stan_(software)) is a
+probabilistic programming language which should be welll suited to
+perform such an inference. We use its interface via the R package
+[rstan](https://cran.r-project.org/web/packages/rstan/index.html).
+
+A Stan and R Implementation
+===========================
 
 Let's generate some samples using Stan but rather than generating
 exactly the model we have given above, instead let's solve the
@@ -101,67 +113,79 @@ s <- extract(samples,permuted=FALSE)
 plot(s[1,1,1:100])
 ```
 
-Now let us suppose that we don't know the value of $g$.
+Now let us suppose that we don't know the value of $g$ and we can only
+observe the horizontal displacement.
 
-A quote:
+```{r}
+zStan <- sin(s[1,1,1:nSamples])
+```
 
-> Markdown is not LaTeX.
+Now we can use Stan to infer the value of $g$.
 
-To compile me, run this in R:
+~~~~{.CPP include="PendulumInfer.stan"}
+~~~~
+
+Here's the R to invoke it.
+
+```{r}
+estimates <- stan(file = 'PendulumInfer.stan',
+                  data = list (
+                      T  = nSamples,
+                      y0 = m0,
+                      z  = zStan,
+                      t0 = t0,
+                      ts = ts
+                  ),
+                  seed = 42,
+                  chains = 1,
+                  iter = 1000,
+                  warmup = 500,
+                  refresh = -1
+                  )
+e <- extract(estimates,pars=c("theta[1]","sigma[1]","lp__"),permuted=TRUE)
+```
+
+This gives an estiamted valeu for $g$ of `r e$theta[1]` which is what
+we would hope.
+
+Now let's try adding some noise to our observations.
+
+```{r}
+set.seed(42)
+epsilons <- rmvnorm(n=nSamples,mean=c(0.0),sigma=bigR)
+
+zStanNoisy <- sin(s[1,1,1:nSamples] + epsilons[,1])
+
+estimatesNoisy <- stan(file = 'PendulumInfer.stan',
+                       data = list (T  = nSamples,
+                                    y0 = m0,
+                                    z  = zStanNoisy,
+                                    t0 = t0,
+                                    ts = ts
+                                    ),
+                       seed = 42,
+                       chains = 1,
+                       iter = 1000,
+                       warmup = 500,
+                       refresh = -1
+                       )
+eNoisy <- extract(estimatesNoisy,pars=c("theta[1]","sigma[1]","lp__"),permuted=TRUE)
+```
+
+This gives an estiamted valeu for $g$ of `r eNoisy$theta[1]` which is
+ok but not great.
+
+## Postamble
+
+To build this page, download the relevant files from
+[github](https://github.com/idontgetoutmuch/RandomWalks) and run this
+in R:
 
     library(knitr)
-    knit('001-minimal.Rmd')
+    knit('Pendulum.Rmd')
 
-    
-See [output here](https://github.com/yihui/knitr-examples/blob/master/001-minimal.md).
+And this from command line:
 
-## code chunks
+    pandoc -s Pendulum.md --filter=./Include > PendulumExpanded.html
 
-A _paragraph_ here. A code chunk below (remember the three backticks):
 
-```{r}
-1+1
-.4-.7+.3 # what? it is not zero!
-```
-
-## graphics
-
-It is easy.
-
-```{r}
-plot(1:10)
-hist(rnorm(1000))
-```
-
-## inline code
-
-Yes I know the value of pi is `r pi`, and 2 times pi is `r 2*pi`.
-
-## math
-
-Sigh. You cannot live without math equations. OK, here we go: $\alpha+\beta=\gamma$. Note this is not supported by native markdown. You probably want to try RStudio, or at least the R package **markdown**, or the function `knitr::knit2html()`.
-
-## nested code chunks
-
-You can write code within other elements, e.g. a list
-
-1. foo is good
-    ```{r}
-    strsplit('hello indented world', ' ')[[1]]
-    ```
-2. bar is better
-
-Or inside blockquotes:
-
-> Here is a quote, followed by a code chunk:
->
-> ```{r}
-> x = 1:10
-> rev(x^2)
-> ```
-
-## conclusion
-
-Nothing fancy. You are ready to go. When you become picky, go to the [knitr website](http://yihui.name/knitr/).
-
-![knitr logo](http://yihui.name/knitr/images/knit-logo.png)

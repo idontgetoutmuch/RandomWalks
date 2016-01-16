@@ -1,9 +1,10 @@
 library(rstan)
+library(mvtnorm)
 
 qc1 = 0.0001
 deltaT = 0.01
 nSamples = 100
-m0 = c(1.07, 0)
+m0 = c(1.6, 0)
 g = 9.81
 t0 = 0.0
 ts = seq(deltaT,nSamples * deltaT,deltaT)
@@ -23,13 +24,15 @@ bigR = matrix(c(0.1),
 
 ## Generate the angle and angular velocity of pendulum with added noise
 samples <- stan(file = 'Pendulum.stan',
-                data = list (T  = nSamples,
-                             y0 = m0,
-                             t0 = t0,
-                             ts = ts,
-                             theta = array(g, dim = 1),
-                             sigma = c(bigQ[1,1], bigQ[2,2])
-                             ),
+                data = list (
+                    T  = nSamples,
+                    y0 = m0,
+                    t0 = t0,
+                    ts = ts,
+                    theta = array(g, dim = 1),
+                    sigma = c(bigQ[1,1], bigQ[2,2]),
+                    refresh = -1
+                ),
                 algorithm="Fixed_param",
                 seed = 42,
                 chains = 1,
@@ -41,17 +44,19 @@ s <- extract(samples,permuted=FALSE)
 zStan <- sin(s[1,1,1:nSamples])
 
 estimates <- stan(file = 'PendulumInfer.stan',
-                  data = list (T  = nSamples,
-                               y0 = m0,
-                               z  = zStan,
-                               t0 = t0,
-                               ts = ts
-                               ),
+                  data = list (
+                      T  = nSamples,
+                      y0 = m0,
+                      z  = zStan,
+                      t0 = t0,
+                      ts = ts
+                  ),
                   seed = 42,
                   chains = 1,
                   iter = 1000,
-                  warmup = 500
-                )
+                  warmup = 500,
+                  refresh = -1
+                  )
 
 set.seed(42)
 etas <- rmvnorm(n=nSamples,mean=c(0.0,0.0),sigma=bigQ)
@@ -87,3 +92,35 @@ estimatesfromR <- stan(file = 'PendulumInfer.stan',
                        iter = 1000,
                        warmup = 500
                        )
+
+epsilons <- rmvnorm(n=nSamples,mean=c(0.0),sigma=bigR)
+
+zStanNoisy <- sin(s[1,1,1:nSamples] + epsilons[,1])
+
+estimatesNoisy <- stan(file = 'PendulumInfer.stan',
+                       data = list (T  = nSamples,
+                                    y0 = m0,
+                                    z  = zStanNoisy,
+                                    t0 = t0,
+                                    ts = ts
+                                    ),
+                       seed = 42,
+                       chains = 1,
+                       iter = 1000,
+                       warmup = 500
+                       )
+
+zNoisy <- sin(z + epsilons[,1])
+
+estimatesNoisyfromR <- stan(file = 'PendulumInfer.stan',
+                            data = list (T  = nSamples,
+                                         y0 = m0,
+                                         z  = zNoisy,
+                                         t0 = t0,
+                                         ts = ts
+                                         ),
+                            seed = 42,
+                            chains = 1,
+                            iter = 1000,
+                            warmup = 500
+                            )

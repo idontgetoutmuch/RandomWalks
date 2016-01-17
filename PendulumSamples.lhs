@@ -1,6 +1,18 @@
+
+Introduction
+============
+
+The [equation of
+motion](https://en.wikipedia.org/wiki/Pendulum_(mathematics)#Simple_gravity_pendulum)
+for a pendulum of unit length subject to [Gaussian white
+noise](https://en.wikipedia.org/wiki/White_noise#Mathematical_definitions)
+is
+
 $$
 \frac{\mathrm{d}^2\alpha}{\mathrm{d}t^2} = -g\sin\alpha + w(t)
 $$
+
+We can discretize this via the usual [Euler method](https://en.wikipedia.org/wiki/Euler_method)
 
 $$
 \begin{bmatrix}
@@ -16,20 +28,23 @@ x_{2,i-1} - g\sin x_{1,i-1}\Delta t
 \mathbf{q}_{i-1}
 $$
 
-where $q_i \sim {\mathcal{N}}(0,Q)$
+where $q_i \sim {\mathcal{N}}(0,Q)$ and
 
 $$
 Q
 =
-Q =
 \begin{bmatrix}
 \frac{q^c \Delta t^3}{3} & \frac{q^c \Delta t^2}{2} \\
 \frac{q^c \Delta t^2}{2} & {q^c \Delta t}
 \end{bmatrix}
 $$
 
+The explanation of the precise form of the covariance matrix will be
+the subject of another blog post; for the purpose of exposition of
+forward filtering / backward smoothing, this detail is not important.
+
 Assume that we can only measure the horizontal position of the
-pendulum so that
+pendulum and further that this measurement is subject to error so that
 
 $$
 y_i = \sin x_i + r_k
@@ -37,6 +52,18 @@ $$
 
 where $r_i \sim {\mathcal{N}}(0,R)$.
 
+Particle Filtering can give us an estimate of where the pendulum is
+and its velocity using all the observations up to that point in
+time. But now suppose we have observed the pendulum for a fixed period
+of time then at times earlier than the time at which we stop our
+observations we now have observations in the future as well as in the
+past. If we can somehow take account of these future observations then
+we should be able to improve our estimate of where the pendulum was at
+any given point in time (as well as its velocity). Forward Filtering /
+Backward Smoothing is a technique for doing this.
+
+Haskell Preamble
+----------------
 
 > {-# OPTIONS_GHC -Wall                     #-}
 > {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
@@ -91,11 +118,14 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 
 > import           Data.List ( transpose )
 
+Simulation
+==========
+
+Let's first plot some typical trajectories of the pendulum.
 
 > deltaT, g :: Double
 > deltaT = 0.01
 > g  = 9.81
-
 
 > type PendulumState = R 2
 > type PendulumObs = R 1
@@ -116,7 +146,6 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   epsilon <-  sample $ rvar (MultivariateNormal 0.0 bigR)
 >   let yNew = vector [sin x1New] + epsilon
 >   return $ Just ((xNew, yNew), xNew)
-
 
 Let's try plotting some samples when we are in the linear region with
 which we are familiar from school $\sin\alpha \approx \alpha$.
@@ -180,8 +209,37 @@ observations are no longer symmetrical about the actuals.
 dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX 0.0))
 ```
 
+Filtering
+=========
+
 > nParticles :: Int
 > nParticles = 1000
+
+The usual Bayesian update step.
+
+> type Particles a = V.Vector a
+
+> oneFilteringStep ::
+>   MonadRandom m =>
+>   (Particles a -> m (Particles a)) ->
+>   (Particles a -> Particles b) ->
+>   (b -> b -> Double) ->
+>   Particles a ->
+>   b ->
+>   WriterT [Particles a] m (Particles a)
+> oneFilteringStep stateUpdate obsUpdate weight statePrevs obs = do
+>   tell [statePrevs]
+>   stateNews <- lift $ stateUpdate statePrevs
+>   let obsNews = obsUpdate stateNews
+>   let weights       = V.map (weight obs) obsNews
+>       cumSumWeights = V.tail $ V.scanl (+) 0 weights
+>       totWeight     = V.last cumSumWeights
+>   vs <- lift $ V.replicateM nParticles (sample $ uniform 0.0 totWeight)
+>   let js = indices cumSumWeights vs
+>       stateTildes = V.map (stateNews V.!) js
+>   return stateTildes
+
+The system state and observable.
 
 > data SystemState a = SystemState { x1  :: a, x2  :: a }
 >   deriving Show
@@ -189,12 +247,15 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 > newtype SystemObs a = SystemObs { y1  :: a }
 >   deriving Show
 
-> type Particles a = V.Vector a
+To make the system state update a bit more readable, let's introduce
+some lifted arithmetic operators.
 
 > (.+), (.*), (.-) :: (Num a) => V.Vector a -> V.Vector a -> V.Vector a
 > (.+) = V.zipWith (+)
 > (.*) = V.zipWith (*)
 > (.-) = V.zipWith (-)
+
+The state update itself.
 
 > stateUpdate :: MonadRandom m =>
 >                Sym 2 ->
@@ -218,27 +279,14 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 >
 >   return (V.zipWith SystemState x1s x2s)
 
-
-> stateUpdate' :: Particles (SystemState Double) ->
->                 Particles (SystemState Double)
-> stateUpdate' xPrevs = V.zipWith SystemState x1s x2s
->   where
->     ix = V.length xPrevs
->
->     x1Prevs = V.map x1 xPrevs
->     x2Prevs = V.map x2 xPrevs
->
->     deltaTs = V.replicate ix deltaT
->     gs = V.replicate ix g
->     x1s = x1Prevs .+ (x2Prevs .* deltaTs)
->     x2s = x2Prevs .- (gs .* (V.map sin x1Prevs) .* deltaTs)
+The function which maps the state to the observable.
 
 > obsUpdate :: Particles (SystemState Double) ->
 >              Particles (SystemObs Double)
 > obsUpdate xs = V.map (SystemObs . sin . x1) xs
 
-> f :: SystemObs Double -> R 1
-> f = vector . pure . y1
+And finally a function to calculate the weight of each particle given
+an observation.
 
 > weight :: forall a n . KnownNat n =>
 >           (a -> R n) ->
@@ -246,8 +294,12 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 >           a -> a -> Double
 > weight f bigR obs obsNew = pdf (MultivariateNormal (f obsNew) bigR) (f obs)
 
+The variance of the prior.
+
 > bigP :: Sym 2
 > bigP = sym $ diag 0.1
+
+And we can generate our ensemble of particles chosen from the prior.
 
 > initParticles :: MonadRandom m =>
 >                  m (Particles (SystemState Double))
@@ -257,36 +309,101 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 >       x2 = fst $ headTail $ snd $ headTail r
 >   return $ SystemState { x1 = x1, x2 = x2}
 
-> type Log = [Particles (SystemState Double)]
+Now we can run the particle filter
 
-> test :: Int -> Log
+> test :: Int -> [Particles (SystemState Double)]
 > test n = snd $ evalState action (pureMT 19)
 >   where
 >     action = runWriterT $ do
 >       xs <- lift $ initParticles
->       V.foldM (oneFilteringStepG (stateUpdate bigQ') obsUpdate (weight f bigR'))
+>       V.foldM (oneFilteringStep (stateUpdate bigQ') obsUpdate (weight f bigR'))
 >             xs
 >             (V.fromList $ map (SystemObs . fst . headTail . snd) (take n pendulumSamples'))
 
+and extract the estimated position of the filter.
 
 > testFiltering :: Int -> [Double]
 > testFiltering n = map ((/ (fromIntegral nParticles)). sum . V.map x1) (test n)
+
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/PendulumFitted.png") 600 600 (translationX 0.0))
+```
 
 Smoothing
 =========
 
 If we could calculate the marginal smoothing distributions $\{p(x_t
 \,|\, y_{1:T})\}_{i=1}^T$ then we might be able to sample from
-them. We have
+them. Using the Markov assumption of our model that $x_i$ is
+independent of $y_{i+1:N}$ given $x_{i+1}$, we have
+
+
+The backward smoothing recursion is based on the observation that the
+conditional time-reversed state sequence has a non-homogeneous
+Markovian structure (for conditionally Gaussian linear state-space
+models, this is known as RTS, or Rauch-Tung-Striebel, 1965,
+smoothing).
+
+Appears to be efficient and stable in the long term (although this
+hasn’t been proved yet).
+
+Yet,
+
+it is not sequential (in particular, one needs to store all particle
+positions and weights);
+
+it has a potential numerical complexity proportional to the number n
+of particles squared (but not further likelihood evaluation is
+needed).
+
 
 $$
 \begin{aligned}
 \overbrace{p(x_i \,|\, y_{1:N})}^{\mathrm{smoother}\,\mathrm{at}\, i} &=
-\int p(x_i, x_{i+1} \,|\, y_{1:N}) \,\mathrm{d}x_{i+1} \\
+\int p(x_i, x_{i+1} \,|\, y_{1:N}) \,\mathrm{d}x_{i+1} & \text{marginal distribution} \\
 &=
-\int p(x_{i+1} \,|\, y_{1:N}) \,p(x_{i} \,|\, y_{1:N}, x_{i+1}) \,\mathrm{d}x_{i+1}
+\int p(x_{i+1} \,|\, y_{1:N}) \,p(x_{i} \,|\, y_{1:N}, x_{i+1}) \,\mathrm{d}x_{i+1} & \text{conditional density} \\
+&=
+\int p(x_{i+1} \,|\, y_{1:N}) \,p(x_{i} \,|\, y_{1:i}, x_{i+1}) \,\mathrm{d}x_{i+1} & \text{Markov model} \\
+&=
+\int p(x_{i+1} \,|\, y_{1:N}) \,
+\frac{p(x_{i}, x_{i+1} \,|\, y_{1:i})}{p(x_{i+1} \,|\, y_{1:i})}
+\,\mathrm{d}x_{i+1}
+& \text{conditional density} \\
+&=
+\int p(x_{i+1} \,|\, y_{1:N}) \,
+\frac{p(x_{i+1} \,|\, x_{i}, y_{1:i})
+\,p(x_{i} \,|\, y_{1:i})}{p(x_{i+1} \,|\, y_{1:i})}
+\,\mathrm{d}x_{i+1}
+& \text{conditional density} \\
+&=
+\int \overbrace{p(x_{i+1} \,|\, y_{1:N})}^{\text{smoother at }i+1} \,
+\underbrace{
+\overbrace{p(x_{i} \,|\, y_{1:i})}^{\text{filter at }i}
+\frac{p(x_{i+1} \,|\, x_{i})}
+     {p(x_{i+1} \,|\, y_{1:i})}
+}
+_{\text{backward transition }p(x_{i} \,|\, y_{1:i},\,x_{i+1})}
+\,\mathrm{d}x_{i+1}
+& \text{Markov model}
 \end{aligned}
 $$
+
+We can use this to sample paths starting at time $i = N$ and working
+backwards. From above we have
+
+$$
+p(x_i \,|\, X_{i+1}, Y_{1:N}) =
+\frac{p(X_{i+1} \,|\, x_{i}, Y_{1:i})
+\,p(x_{i} \,|\, Y_{1:i})}{p(X_{i+1} \,|\, Y_{1:i})}
+=
+Z
+\,p(X_{i+1} \,|\, x_{i}, Y_{1:i})
+\,p(x_{i} \,|\, Y_{1:i})
+$$
+
+where $Z$ is some normalisation constant (Z for "Zustandssumme" - sum
+over states).
 
 > inner :: MonadRandom m =>
 >           (Particles (a) -> V.Vector (a)) ->
@@ -320,6 +437,20 @@ $$
 
 > filterEstss :: Int -> V.Vector (Particles (SystemState Double))
 > filterEstss n = V.reverse $ V.fromList $ test n
+
+> stateUpdate' :: Particles (SystemState Double) ->
+>                 Particles (SystemState Double)
+> stateUpdate' xPrevs = V.zipWith SystemState x1s x2s
+>   where
+>     ix = V.length xPrevs
+>
+>     x1Prevs = V.map x1 xPrevs
+>     x2Prevs = V.map x2 xPrevs
+>
+>     deltaTs = V.replicate ix deltaT
+>     gs = V.replicate ix g
+>     x1s = x1Prevs .+ (x2Prevs .* deltaTs)
+>     x2s = x2Prevs .- (gs .* (V.map sin x1Prevs) .* deltaTs)
 
 > testSmoothing :: Int -> Int -> [Double]
 > testSmoothing m n = V.toList $ evalState action (pureMT 23)
@@ -470,25 +601,6 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   return $ SystemStateG { gx1 = x1, gx2 = x2, gx3 = x3}
 
 
-> oneFilteringStepG ::
->   (Monoid [Particles a], MonadRandom m) =>
->   (Particles a -> m (Particles a)) ->
->   (Particles a -> (Particles (SystemObs Double))) ->
->   (SystemObs Double -> SystemObs Double -> Double) ->
->   Particles a ->
->   SystemObs Double ->
->   WriterT [Particles a] m (Particles a)
-> oneFilteringStepG stateUpdate obsUpdate weight statePrevs obs = do
->   tell [statePrevs]
->   stateNews <- lift $ stateUpdate statePrevs
->   let obsNews = obsUpdate stateNews
->   let weights       = V.map (weight obs) obsNews
->       cumSumWeights = V.tail $ V.scanl (+) 0 weights
->       totWeight     = V.last cumSumWeights
->   vs <- lift $ V.replicateM nParticles (sample $ uniform 0.0 totWeight)
->   let js = indices cumSumWeights vs
->       stateTildes = V.map (stateNews V.!) js
->   return stateTildes
 
 > obsUpdateG :: Particles (SystemStateG Double) ->
 >              Particles (SystemObs Double)
@@ -501,7 +613,7 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   where
 >     action = runWriterT $ do
 >       xs <- lift $ initParticlesG
->       V.foldM (oneFilteringStepG (stateUpdateG bigQg) obsUpdateG (weight f bigRg))
+>       V.foldM (oneFilteringStep (stateUpdateG bigQg) obsUpdateG (weight f bigRg))
 >             xs
 >             (V.fromList $ map (SystemObs . fst . headTail . snd) (take n pendulumSamples'))
 
@@ -530,10 +642,17 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx3) yss
 >              )
 
-notes
+Notes
 =====
 
-helpers for the Inverse CDF
+Helpers for Converting Types
+----------------------------
+
+> f :: SystemObs Double -> R 1
+> f = vector . pure . y1
+
+
+Helpers for the Inverse CDF
 ---------------------------
 
 That these are helpers for the inverse CDF is delayed to another blog

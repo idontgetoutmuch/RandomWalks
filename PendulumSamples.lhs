@@ -312,18 +312,18 @@ And we can generate our ensemble of particles chosen from the prior.
 Now we can run the particle filter
 
 > test :: Int -> [Particles (SystemState Double)]
-> test n = snd $ evalState action (pureMT 19)
+> test nTimeSteps = snd $ evalState action (pureMT 19)
 >   where
 >     action = runWriterT $ do
 >       xs <- lift $ initParticles
 >       V.foldM (oneFilteringStep (stateUpdate bigQ') obsUpdate (weight f bigR'))
 >             xs
->             (V.fromList $ map (SystemObs . fst . headTail . snd) (take n pendulumSamples'))
+>             (V.fromList $ map (SystemObs . fst . headTail . snd) (take nTimeSteps pendulumSamples'))
 
 and extract the estimated position of the filter.
 
 > testFiltering :: Int -> [Double]
-> testFiltering n = map ((/ (fromIntegral nParticles)). sum . V.map x1) (test n)
+> testFiltering nTimeSteps = map ((/ (fromIntegral nParticles)). sum . V.map x1) (test nTimeSteps)
 
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/PendulumFitted.png") 600 600 (translationX 0.0))
@@ -394,49 +394,94 @@ backwards. From above we have
 
 $$
 p(x_i \,|\, X_{i+1}, Y_{1:N}) =
-\frac{p(X_{i+1} \,|\, x_{i}, Y_{1:i})
+\frac{p(X_{i+1} \,|\, x_{i})
 \,p(x_{i} \,|\, Y_{1:i})}{p(X_{i+1} \,|\, Y_{1:i})}
 =
 Z
-\,p(X_{i+1} \,|\, x_{i}, Y_{1:i})
+\,p(X_{i+1} \,|\, x_{i})
 \,p(x_{i} \,|\, Y_{1:i})
 $$
 
 where $Z$ is some normalisation constant (Z for "Zustandssumme" - sum
 over states).
 
-> inner :: MonadRandom m =>
->           (Particles (a) -> V.Vector (a)) ->
->           (a -> a -> Double) ->
->           a ->
->           Particles (a) ->
->           WriterT (Particles (a)) m (a)
-> inner stateUpdate weight smple statePrevs = do
->   let mus = stateUpdate statePrevs
->       weights =  V.map (weight smple) mus
->       cumSumWeights = V.tail $ V.scanl (+) 0 weights
->       totWeight     = V.last cumSumWeights
->   v <- lift $ sample $ uniform 0.0 totWeight
->   let ix = binarySearch cumSumWeights v
->       xnNew = statePrevs V.! ix
->   tell $ V.singleton xnNew
->   return $ xnNew
+From particle filtering we know that
 
-> runInnerG :: MonadRandom m =>
+$$
+{p}(x_i \,|\, y_{1:i}) \approx \hat{p}(x_i \,|\, y_{1:i}) \triangleq \sum_{j=1}^M w_i^{(j)}\delta(x_i - x_i^{(j)})
+$$
+
+Thus
+
+$$
+\hat{p}(x_i \,|\, X_{i+1}, Y_{1:i})
+=
+Z
+\,p(X_{i+1} \,|\, x_{i})
+\,\hat{p}(x_{i} \,|\, Y_{1:i})
+=
+\sum_{j=1}^M w_i^{(j)}\delta(x_i - x_i^{(j)})
+\,p(X_{i+1} \,|\, x_{i})
+$$
+
+and we can sample $x_i$ from $\{x_i^{(j)}\}_{1 \leq j \leq M}$ with
+probability
+
+$$
+\frac{w_k^{(i)}
+\,p(X_{i+1} \,|\, x_{i})}
+{\sum_{i=1}^N w_k^{(i)}
+\,p(X_{i+1} \,|\, x_{i})}
+$$
+
+Recalling that we have re-sampled the particles in the filtering
+algorithm so that their weights are all $1/M$ and abstracting the
+state update and state density function, we can encode this update
+step in Haskell as
+
+> oneSmoothingStep :: MonadRandom m =>
+>          (Particles a -> V.Vector a) ->
+>          (a -> a -> Double) ->
+>          a ->
+>          Particles a ->
+>          WriterT (Particles a) m a
+> oneSmoothingStep stateUpdate
+>                  stateDensity
+>                  smoothingSampleAtiPlus1
+>                  filterSamplesAti = do it
+>   where
+>     it = do
+>       let mus = stateUpdate filterSamplesAti
+>           weights =  V.map (stateDensity smoothingSampleAtiPlus1) mus
+>           cumSumWeights = V.tail $ V.scanl (+) 0 weights
+>           totWeight     = V.last cumSumWeights
+>       v <- lift $ sample $ uniform 0.0 totWeight
+>       let ix = binarySearch cumSumWeights v
+>           xnNew = filterSamplesAti V.! ix
+>       tell $ V.singleton xnNew
+>       return $ xnNew
+
+To sample a complete path we start with a sample from the filtering
+distribution at at time $i = N$ (which is also the smoothing
+distribution)
+
+> oneSmoothingPath :: MonadRandom m =>
 >              (Int -> V.Vector (Particles a)) ->
 >              (a -> Particles a -> WriterT (Particles a) m a) ->
 >              Int -> m (a, V.Vector a)
-> runInnerG filterEstss inner n = do
->   let sxs = filterEstss n
+> oneSmoothingPath filterEstss oneSmoothingStep nTimeSteps = do
+>   let ys = filterEstss nTimeSteps
 >   ix <- sample $ uniform 0 (nParticles - 1)
->   let xn = (V.head sxs) V.! ix
->   runWriterT $ V.foldM inner xn sxs
+>   let xn = (V.head ys) V.! ix
+>   runWriterT $ V.foldM oneSmoothingStep xn ys
 
-> h :: SystemState Double -> R 2
-> h u = vector [x1 u , x2 u]
+Of course we need to run through the filtering distributions starting
+at $i = N$
 
 > filterEstss :: Int -> V.Vector (Particles (SystemState Double))
 > filterEstss n = V.reverse $ V.fromList $ test n
+
+
 
 > stateUpdate' :: Particles (SystemState Double) ->
 >                 Particles (SystemState Double)
@@ -457,7 +502,7 @@ over states).
 >   where
 >     action = do
 >       xss <- V.replicateM n $
->              snd <$> (runInnerG filterEstss (inner stateUpdate' (weight h bigQ')) m)
+>              snd <$> (oneSmoothingPath filterEstss (oneSmoothingStep stateUpdate' (weight h bigQ')) m)
 >       let yss = V.fromList $ map V.fromList $
 >                 transpose $
 >                 V.toList $ V.map (V.toList) $
@@ -632,7 +677,7 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   where
 >     action = do
 >       xss <- V.replicateM n $
->              snd <$> (runInnerG filterGEstss (inner stateUpdateG' (weight hG bigQg)) m)
+>              snd <$> (oneSmoothingPath filterGEstss (oneSmoothingStep stateUpdateG' (weight hG bigQg)) m)
 >       let yss = V.fromList $ map V.fromList $
 >                 transpose $
 >                 V.toList $ V.map (V.toList) $
@@ -651,6 +696,8 @@ Helpers for Converting Types
 > f :: SystemObs Double -> R 1
 > f = vector . pure . y1
 
+> h :: SystemState Double -> R 2
+> h u = vector [x1 u , x2 u]
 
 Helpers for the Inverse CDF
 ---------------------------

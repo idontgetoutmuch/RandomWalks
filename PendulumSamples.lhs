@@ -1,3 +1,10 @@
+% Particle Smoothing
+% Dominic Steinitz
+% 18th January 2016
+
+---
+bibliography: Stochastic.bib
+---
 
 Introduction
 ============
@@ -337,26 +344,6 @@ If we could calculate the marginal smoothing distributions $\{p(x_t
 them. Using the Markov assumption of our model that $x_i$ is
 independent of $y_{i+1:N}$ given $x_{i+1}$, we have
 
-
-The backward smoothing recursion is based on the observation that the
-conditional time-reversed state sequence has a non-homogeneous
-Markovian structure (for conditionally Gaussian linear state-space
-models, this is known as RTS, or Rauch-Tung-Striebel, 1965,
-smoothing).
-
-Appears to be efficient and stable in the long term (although this
-hasn’t been proved yet).
-
-Yet,
-
-it is not sequential (in particular, one needs to store all particle
-positions and weights);
-
-it has a potential numerical complexity proportional to the number n
-of particles squared (but not further likelihood evaluation is
-needed).
-
-
 $$
 \begin{aligned}
 \overbrace{p(x_i \,|\, y_{1:N})}^{\mathrm{smoother}\,\mathrm{at}\, i} &=
@@ -388,6 +375,23 @@ _{\text{backward transition }p(x_{i} \,|\, y_{1:i},\,x_{i+1})}
 & \text{Markov model}
 \end{aligned}
 $$
+
+We observe that this is a (continuous state space) Markov process with
+a non-homogeneous transition function albeit one which goes backwards
+in time. Apparently for conditionally Gaussian linear state-space
+models, this is known as RTS, or Rauch-Tung-Striebel smoothing
+(@RTS-1965).
+
+According to @Cappe:IntroToSMC:Online,
+
+* It appears to be efficient and stable in the long term (although no
+proof was available at the time the slides were presented).
+
+* It is not sequential (in particular, one needs to store all particle
+positions and weights).
+
+* It has numerical complexity proportional $O(n^2)$ where $N$ is the
+number of particles.
 
 We can use this to sample paths starting at time $i = N$ and working
 backwards. From above we have
@@ -717,3 +721,5 @@ post.
 >       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
 >       where k = l + (u - l) `shiftR` 1
 
+Bibliography
+============

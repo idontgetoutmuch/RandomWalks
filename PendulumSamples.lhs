@@ -115,14 +115,10 @@ Haskell Preamble
 >                    headTail, matrix, sym,
 >                    diag
 >                  )
-> import           GHC.TypeLits
-
-> import           MultivariateNormal
-
+> import           GHC.TypeLits ( KnownNat )
+> import           MultivariateNormal ( MultivariateNormal(..) )
 > import qualified Data.Vector as V
-
 > import           Data.Bits ( shiftR )
-
 > import           Data.List ( transpose )
 
 Simulation
@@ -219,6 +215,10 @@ dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX
 Filtering
 =========
 
+We do not give the theory behind particle filtering. The interested
+reader can either consult @Srkk:2013:BFS:2534502 or wait for a future
+blog post on the subject.
+
 > nParticles :: Int
 > nParticles = 1000
 
@@ -262,29 +262,42 @@ some lifted arithmetic operators.
 > (.*) = V.zipWith (*)
 > (.-) = V.zipWith (-)
 
-The state update itself.
+The state update itself
 
-> stateUpdate :: MonadRandom m =>
->                Sym 2 ->
->                Particles (SystemState Double) ->
->                m (Particles (SystemState Double))
-> stateUpdate bigQ xPrevs = do
+> stateUpdate :: Particles (SystemState Double) ->
+>                 Particles (SystemState Double)
+> stateUpdate xPrevs = V.zipWith SystemState x1s x2s
+>   where
+>     ix = V.length xPrevs
+>
+>     x1Prevs = V.map x1 xPrevs
+>     x2Prevs = V.map x2 xPrevs
+>
+>     deltaTs = V.replicate ix deltaT
+>     gs = V.replicate ix g
+>     x1s = x1Prevs .+ (x2Prevs .* deltaTs)
+>     x2s = x2Prevs .- (gs .* (V.map sin x1Prevs) .* deltaTs)
+
+and its noisy version.
+
+> stateUpdateNoisy :: MonadRandom m =>
+>                     Sym 2 ->
+>                     Particles (SystemState Double) ->
+>                     m (Particles (SystemState Double))
+> stateUpdateNoisy bigQ xPrevs = do
+>   let xs = stateUpdate xPrevs
+>
+>       x1s = V.map x1 xs
+>       x2s = V.map x2 xs
+>
 >   let ix = V.length xPrevs
->
->   let x1Prevs = V.map x1 xPrevs
->       x2Prevs = V.map x2 xPrevs
->
 >   etas <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ)
+>
 >   let eta1s, eta2s :: V.Vector Double
 >       eta1s = V.fromList $ map (fst . headTail) etas
 >       eta2s = V.fromList $ map (fst . headTail . snd . headTail) etas
 >
->   let deltaTs = V.replicate ix deltaT
->       gs = V.replicate ix g
->       x1s = x1Prevs .+ (x2Prevs .* deltaTs) .+ eta1s
->       x2s = x2Prevs .- (gs .* (V.map sin x1Prevs) .* deltaTs) .+ eta2s
->
->   return (V.zipWith SystemState x1s x2s)
+>   return (V.zipWith SystemState (x1s .+ eta1s) (x2s .+ eta2s))
 
 The function which maps the state to the observable.
 
@@ -306,7 +319,7 @@ The variance of the prior.
 > bigP :: Sym 2
 > bigP = sym $ diag 0.1
 
-And we can generate our ensemble of particles chosen from the prior.
+Generate our ensemble of particles chosen from the prior,
 
 > initParticles :: MonadRandom m =>
 >                  m (Particles (SystemState Double))
@@ -316,21 +329,24 @@ And we can generate our ensemble of particles chosen from the prior.
 >       x2 = fst $ headTail $ snd $ headTail r
 >   return $ SystemState { x1 = x1, x2 = x2}
 
-Now we can run the particle filter
+run the particle filter,
 
 > test :: Int -> [Particles (SystemState Double)]
 > test nTimeSteps = snd $ evalState action (pureMT 19)
 >   where
 >     action = runWriterT $ do
 >       xs <- lift $ initParticles
->       V.foldM (oneFilteringStep (stateUpdate bigQ') obsUpdate (weight f bigR'))
->             xs
->             (V.fromList $ map (SystemObs . fst . headTail . snd) (take nTimeSteps pendulumSamples'))
+>       V.foldM
+>         (oneFilteringStep (stateUpdateNoisy bigQ') obsUpdate (weight f bigR'))
+>         xs
+>         (V.fromList $ map (SystemObs . fst . headTail . snd)
+>                           (take nTimeSteps pendulumSamples'))
 
-and extract the estimated position of the filter.
+and extract the estimated position from the filter.
 
 > testFiltering :: Int -> [Double]
-> testFiltering nTimeSteps = map ((/ (fromIntegral nParticles)). sum . V.map x1) (test nTimeSteps)
+> testFiltering nTimeSteps = map ((/ (fromIntegral nParticles)). sum . V.map x1)
+>                                (test nTimeSteps)
 
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/PendulumFitted.png") 600 600 (translationX 0.0))
@@ -487,26 +503,13 @@ at $i = N$
 
 
 
-> stateUpdate' :: Particles (SystemState Double) ->
->                 Particles (SystemState Double)
-> stateUpdate' xPrevs = V.zipWith SystemState x1s x2s
->   where
->     ix = V.length xPrevs
->
->     x1Prevs = V.map x1 xPrevs
->     x2Prevs = V.map x2 xPrevs
->
->     deltaTs = V.replicate ix deltaT
->     gs = V.replicate ix g
->     x1s = x1Prevs .+ (x2Prevs .* deltaTs)
->     x2s = x2Prevs .- (gs .* (V.map sin x1Prevs) .* deltaTs)
 
 > testSmoothing :: Int -> Int -> [Double]
 > testSmoothing m n = V.toList $ evalState action (pureMT 23)
 >   where
 >     action = do
 >       xss <- V.replicateM n $
->              snd <$> (oneSmoothingPath filterEstss (oneSmoothingStep stateUpdate' (weight h bigQ')) m)
+>              snd <$> (oneSmoothingPath filterEstss (oneSmoothingStep stateUpdate (weight h bigQ')) m)
 >       let yss = V.fromList $ map V.fromList $
 >                 transpose $
 >                 V.toList $ V.map (V.toList) $

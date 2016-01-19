@@ -94,6 +94,7 @@ Haskell Preamble
 > {-# LANGUAGE ScopedTypeVariables          #-}
 > {-# LANGUAGE TemplateHaskell              #-}
 > {-# LANGUAGE DataKinds                    #-}
+> {-# LANGUAGE DeriveGeneric                #-}
 
 > module PendulumSamples ( pendulumSamples
 >                        , pendulumSamples'
@@ -120,6 +121,8 @@ Haskell Preamble
 > import qualified Data.Vector as V
 > import           Data.Bits ( shiftR )
 > import           Data.List ( transpose )
+> import           Control.Parallel.Strategies
+> import           GHC.Generics (Generic)
 
 Simulation
 ==========
@@ -220,7 +223,7 @@ reader can either consult @Srkk:2013:BFS:2534502 or wait for a future
 blog post on the subject.
 
 > nParticles :: Int
-> nParticles = 1000
+> nParticles = 50
 
 The usual Bayesian update step.
 
@@ -249,7 +252,9 @@ The usual Bayesian update step.
 The system state and observable.
 
 > data SystemState a = SystemState { x1  :: a, x2  :: a }
->   deriving Show
+>   deriving (Show, Generic)
+
+> instance NFData a => NFData (SystemState a)
 
 > newtype SystemObs a = SystemObs { y1  :: a }
 >   deriving Show
@@ -331,8 +336,8 @@ Generate our ensemble of particles chosen from the prior,
 
 run the particle filter,
 
-> test :: Int -> [Particles (SystemState Double)]
-> test nTimeSteps = snd $ evalState action (pureMT 19)
+> runFilter :: Int -> [Particles (SystemState Double)]
+> runFilter nTimeSteps = snd $ evalState action (pureMT 19)
 >   where
 >     action = runWriterT $ do
 >       xs <- lift $ initParticles
@@ -346,7 +351,7 @@ and extract the estimated position from the filter.
 
 > testFiltering :: Int -> [Double]
 > testFiltering nTimeSteps = map ((/ (fromIntegral nParticles)). sum . V.map x1)
->                                (test nTimeSteps)
+>                                (runFilter nTimeSteps)
 
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/PendulumFitted.png") 600 600 (translationX 0.0))
@@ -499,10 +504,7 @@ Of course we need to run through the filtering distributions starting
 at $i = N$
 
 > filterEstss :: Int -> V.Vector (Particles (SystemState Double))
-> filterEstss n = V.reverse $ V.fromList $ test n
-
-
-
+> filterEstss n = V.reverse $ V.fromList $ runFilter n
 
 > testSmoothing :: Int -> Int -> [Double]
 > testSmoothing m n = V.toList $ evalState action (pureMT 23)
@@ -516,9 +518,16 @@ at $i = N$
 >                 xss
 >       return $ V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map x1) yss
 
+By eye we can see we get a better fit
+
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/PendulumSmoothed20.png") 600 600 (translationX 0.0))
 ```
+
+and calculating the mean square error for filtering gives
+$6.47\times10^{-3}$ against the mean square error for smoothing of
+$1.82\times10^{-3}$; this confirms the fit really is better as one
+would hope.
 
 Unknown Gravity
 ===============
@@ -572,37 +581,38 @@ $$
 
 where $r_i \sim {\mathcal{N}}(0,R)$.
 
+> type PendulumStateG = R 3
+
+> pendulumSampleG :: MonadRandom m =>
+>                   Sym 3 ->
+>                   Sym 1 ->
+>                   PendulumStateG ->
+>                   m (Maybe ((PendulumStateG, PendulumObs), PendulumStateG))
+> pendulumSampleG bigQ bigR xPrev = do
+>   let x1Prev = fst $ headTail xPrev
+>       x2Prev = fst $ headTail $ snd $ headTail xPrev
+>       x3Prev = fst $ headTail $ snd $ headTail $ snd $ headTail xPrev
+>   eta <- sample $ rvar (MultivariateNormal 0.0 bigQ)
+>   let x1= x1Prev + x2Prev * deltaT
+>       x2 = x2Prev - g * (sin x1Prev) * deltaT
+>       x3 = x3Prev
+>       xNew = vector [x1, x2, x3] + eta
+>       x1New = fst $ headTail xNew
+>   epsilon <-  sample $ rvar (MultivariateNormal 0.0 bigR)
+>   let yNew = vector [sin x1New] + epsilon
+>   return $ Just ((xNew, yNew), xNew)
+
+> pendulumSampleGs :: [(PendulumStateG, PendulumObs)]
+> pendulumSampleGs = evalState (ML.unfoldrM (pendulumSampleG bigQg bigRg) mG) (pureMT 29)
 
 > data SystemStateG a = SystemStateG { gx1  :: a, gx2  :: a, gx3 :: a }
 >   deriving Show
 
-> stateUpdateG :: MonadRandom m =>
->                Sym 3 ->
->                Particles (SystemStateG Double) ->
->                m (Particles (SystemStateG Double))
-> stateUpdateG bigQ xPrevs = do
->   let ix = V.length xPrevs
->
->   let x1Prevs = V.map gx1 xPrevs
->       x2Prevs = V.map gx2 xPrevs
->       x3Prevs = V.map gx3 xPrevs
->
->   etas <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ)
->   let eta1s, eta2s, eta3s :: V.Vector Double
->       eta1s = V.fromList $ map (fst . headTail) etas
->       eta2s = V.fromList $ map (fst . headTail . snd . headTail) etas
->       eta3s = V.fromList $ map (fst . headTail . snd . headTail . snd . headTail) etas
->
->   let deltaTs = V.replicate ix deltaT
->       x1s = x1Prevs .+ (x2Prevs .* deltaTs) .+ eta1s
->       x2s = x2Prevs .- (x3Prevs .* (V.map sin x1Prevs) .* deltaTs) .+ eta2s
->       x3s = x3Prevs .+ eta3s
->
->   return (V.zipWith3 SystemStateG x1s x2s x3s)
+The state update itself
 
-> stateUpdateG' :: Particles (SystemStateG Double) ->
->                  Particles (SystemStateG Double)
-> stateUpdateG' xPrevs = V.zipWith3 SystemStateG x1s x2s x3s
+> stateUpdateG :: Particles (SystemStateG Double) ->
+>                 Particles (SystemStateG Double)
+> stateUpdateG xPrevs = V.zipWith3 SystemStateG x1s x2s x3s
 >   where
 >     ix = V.length xPrevs
 >
@@ -615,6 +625,37 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >     x2s = x2Prevs .- (x3Prevs .* (V.map sin x1Prevs) .* deltaTs)
 >     x3s = x3Prevs
 
+and its noisy version.
+
+> stateUpdateNoisyG :: MonadRandom m =>
+>                      Sym 3 ->
+>                      Particles (SystemStateG Double) ->
+>                      m (Particles (SystemStateG Double))
+> stateUpdateNoisyG bigQ xPrevs = do
+>   let ix = V.length xPrevs
+>
+>   let xs = stateUpdateG xPrevs
+>
+>       x1s = V.map gx1 xs
+>       x2s = V.map gx2 xs
+>       x3s = V.map gx3 xs
+>
+>   etas <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ)
+>   let eta1s, eta2s, eta3s :: V.Vector Double
+>       eta1s = V.fromList $ map (fst . headTail) etas
+>       eta2s = V.fromList $ map (fst . headTail . snd . headTail) etas
+>       eta3s = V.fromList $ map (fst . headTail . snd . headTail . snd . headTail) etas
+>
+>   return (V.zipWith3 SystemStateG (x1s .+ eta1s) (x2s .+ eta2s) (x3s .+ eta3s))
+
+The function which maps the state to the observable.
+
+> obsUpdateG :: Particles (SystemStateG Double) ->
+>              Particles (SystemObs Double)
+> obsUpdateG xs = V.map (SystemObs . sin . gx1) xs
+
+The mean and variance of the prior.
+
 > mG :: R 3
 > mG = vector [1.6, 0.0, 8.00]
 
@@ -625,14 +666,17 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   , 0.0, 0.0, 1e-2
 >   ]
 
+Parameters for the state update; note that the variance is not exactly
+the same as in the formulation above.
+
 > bigQg :: Sym 3
 > bigQg = sym $ matrix bigQgl
 
 > qc1G :: Double
-> qc1G = 0.01
+> qc1G = 0.0001
 
 > sigmaG :: Double
-> sigmaG = 5.0e-3
+> sigmaG = 1.0e-2
 
 > bigQgl :: [Double]
 > bigQgl = [ qc1G * deltaT^3 / 3, qc1G * deltaT^2 / 2, 0.0,
@@ -640,8 +684,12 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >                            0.0,                 0.0, sigmaG
 >          ]
 
+The noise of the measurement.
+
 > bigRg :: Sym 1
 > bigRg  = sym $ matrix [0.1]
+
+Generate the ensemble of particles from the prior,
 
 > initParticlesG :: MonadRandom m =>
 >                  m (Particles (SystemStateG Double))
@@ -652,31 +700,32 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >       x3 = fst $ headTail $ snd $ headTail $ snd $ headTail r
 >   return $ SystemStateG { gx1 = x1, gx2 = x2, gx3 = x3}
 
+run the particle filter,
 
-
-> obsUpdateG :: Particles (SystemStateG Double) ->
->              Particles (SystemObs Double)
-> obsUpdateG xs = V.map (SystemObs . sin . gx1) xs
-
-> type LogG = [Particles (SystemStateG Double)]
-
-> testG :: Int -> LogG
-> testG n = snd $ evalState action (pureMT 19)
+> runFilterG :: Int -> [Particles (SystemStateG Double)]
+> runFilterG n = snd $ evalState action (pureMT 19)
 >   where
 >     action = runWriterT $ do
 >       xs <- lift $ initParticlesG
->       V.foldM (oneFilteringStep (stateUpdateG bigQg) obsUpdateG (weight f bigRg))
->             xs
->             (V.fromList $ map (SystemObs . fst . headTail . snd) (take n pendulumSamples'))
+>       V.foldM
+>         (oneFilteringStep (stateUpdateNoisyG bigQg) obsUpdateG (weight f bigRg))
+>         xs
+>         (V.fromList $ map (SystemObs . fst . headTail . snd) (take n pendulumSampleGs))
+
+and extract the estimated parameter from the filter.
 
 > testFilteringG :: Int -> [Double]
-> testFilteringG n = map ((/ (fromIntegral nParticles)). sum . V.map gx3) (testG n)
+> testFilteringG n = map ((/ (fromIntegral nParticles)). sum . V.map gx3) (runFilterG n)
+
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/PendulumG.A.png") 600 600 (translationX 0.0))
+```
+
+Again we need to run through the filtering distributions starting at
+$i = N$
 
 > filterGEstss :: Int -> V.Vector (Particles (SystemStateG Double))
-> filterGEstss n = V.reverse $ V.fromList $ testG n
-
-> hG :: SystemStateG Double -> R 3
-> hG u = vector [gx1 u , gx2 u, gx3 u]
+> filterGEstss n = V.reverse $ V.fromList $ runFilterG n
 
 > testSmoothingG :: Int -> Int -> ([Double], [Double], [Double])
 > testSmoothingG m n = (\(x, y, z) -> (V.toList x, V.toList y, V.toList z))  $
@@ -684,7 +733,7 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >   where
 >     action = do
 >       xss <- V.replicateM n $
->              snd <$> (oneSmoothingPath filterGEstss (oneSmoothingStep stateUpdateG' (weight hG bigQg)) m)
+>              snd <$> (oneSmoothingPath filterGEstss (oneSmoothingStep stateUpdateG (weight hG bigQg)) m)
 >       let yss = V.fromList $ map V.fromList $
 >                 transpose $
 >                 V.toList $ V.map (V.toList) $
@@ -693,6 +742,14 @@ where $r_i \sim {\mathcal{N}}(0,R)$.
 >              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx2) yss
 >              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx3) yss
 >              )
+
+Again by eye we get a better fit but note that we are using the
+samples in which the state update is noisy as well as the observation
+so we don't expect to get a very good fit.
+
+```{.dia height='600'}
+dia = image (DImage (ImageRef "diagrams/PendulumSmoothedG.A.png") 600 600 (translationX 0.0))
+```
 
 Notes
 =====
@@ -705,6 +762,9 @@ Helpers for Converting Types
 
 > h :: SystemState Double -> R 2
 > h u = vector [x1 u , x2 u]
+
+> hG :: SystemStateG Double -> R 3
+> hG u = vector [gx1 u , gx2 u, gx3 u]
 
 Helpers for the Inverse CDF
 ---------------------------

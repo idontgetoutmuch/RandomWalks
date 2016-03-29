@@ -1,0 +1,55 @@
+% Modelling an Epidemic
+% Dominic Steinitz
+% 28th March 2016
+
+---
+bibliography: Stochastic.bib
+---
+
+Introduction
+============
+
+@RSPSA1927:115 give a simple model of the spread of an infectious
+disease. Individuals move from being susceptible ($S$) to infected
+($I$) to recovered ($R$).
+
+$$
+\begin{eqnarray}
+\frac{dS}{dt} & = & - \beta S(t) I(t) \label{eq2a} \\
+\frac{dI}{dt} & = & \beta S(t) I(t) - k I(t) \label{eq2b} \\
+\frac{dR}{dt} & = & k I(t) . \label{eq2c}
+\end{eqnarray}
+$$
+
+We can model this in Stan as follows.
+
+~~~~{.CPP include="sir.stan"}
+~~~~
+
+And then use R to run the model and plot the results.
+
+```{r}
+library(rstan)
+
+nSamples <- 500
+xs       <- seq(0.05,25,0.05)
+
+samples <- stan(file = 'sir.stan',
+                data = list (T  = nSamples,
+                             y0 = c(762.0, 1.0, 0.0),
+                             ts = xs,
+                             theta = c(0.0026, 0.5)
+                             ),
+                algorithm="Fixed_param",
+                chains = 1,
+                iter =1
+                )
+
+s <- extract(samples,permuted=FALSE)
+plot(x=xs,y=s[1,1,1:nSamples], type="l")
+plot(x=xs,y=s[1,1,(nSamples + 1):(2 * nSamples)], type="l")
+plot(x=xs,y=s[1,1,(2 * nSamples + 1):(3 * nSamples)], type="l")
+```
+
+Bibliography
+============

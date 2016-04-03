@@ -115,7 +115,7 @@ main = do
                                (zip [0,1..] is)
                                (zip [0,1..] rs))
   let ys = testFilteringS
-      is = snd $ fst ys
+      is = fst $ snd ys
       js = concat $ zipWith (\i ps -> zip (repeat i) ps) [0,1..] is
   displayHeader "diagrams/SirParts.png"
                 (diagSirParticles "Influenza Outbreak" js)

@@ -41,7 +41,7 @@ $$
 
 > import           Data.Random hiding ( StdNormal, Normal, gamma )
 > import           Data.Random.Source.PureMT ( pureMT )
-> import           Control.Monad.State ( evalState, replicateM )
+> import           Control.Monad.State ( evalState )
 > import           Control.Monad.Writer ( tell, WriterT, lift,
 >                                         runWriterT
 >                                       )
@@ -58,25 +58,25 @@ $$
 
 
 > sirOde :: Double -> Double -> Double -> [Double] -> [Double]
-> sirOde beta gamma _t [s, i, _r] =
+> sirOde delta gamma _t [s, i, _r] =
 >   [
->     negate (beta * i * s)
->   , (beta * i * s) - (gamma * i)
+>     negate (delta * i * s)
+>   , (delta * i * s) - (gamma * i)
 >   , gamma * i
 >   ]
 > sirOde _b _g _t vars = error $ "sirOde called with: " ++ show (length vars) ++ " variable"
 
-> beta, gamma :: Double
-> beta = 0.0026
+> delta, gamma :: Double
+> delta = 0.0026
 > gamma = 0.5
 
 > initS, initI, initR :: Double
 > initS = 762.0
 > initI = 1.0
-> initR = 0.0
+> initR = 0.1
 
 > sol :: Matrix Double
-> sol = odeSolve (sirOde beta gamma) [initS, initI, initR] (fromList [0.0,deltaT..14.0])
+> sol = odeSolve (sirOde delta gamma) [initS, initI, initR] (fromList [0.0,deltaT..14.0])
 
 > nParticles :: Int
 > nParticles = 1000
@@ -108,7 +108,7 @@ The usual Bayesian update step.
 > data SystemState a = SystemState { stateS     :: a
 >                                  , stateI     :: a
 >                                  , stateR     :: a
->                                  , stateBeta  :: a
+>                                  , stateDelta  :: a
 >                                  , stateGamma :: a
 >                                  }
 >   deriving Show
@@ -119,19 +119,19 @@ The usual Bayesian update step.
 > stateUpdate :: Particles (SystemState Double) ->
 >                Particles (SystemState Double)
 > stateUpdate xPrevs =
->   V.zipWith5 SystemState ss is rs betas gammas
+>   V.zipWith5 SystemState ss is rs deltas gammas
 >   where
 >     sPrevs     = V.map stateS     xPrevs
 >     iPrevs     = V.map stateI     xPrevs
 >     rPrevs     = V.map stateR     xPrevs
->     betaPrevs  = V.map stateBeta  xPrevs
+>     deltaPrevs  = V.map stateDelta  xPrevs
 >     gammaPrevs = V.map stateGamma xPrevs
 >
 >     f b g xs = odeSolve (sirOde b g) xs
 >                (0.0 `VS.cons` (deltaT `VS.cons` VS.empty))
 >
 >     ms :: V.Vector (Matrix Double)
->     ms = V.zipWith3 f betaPrevs gammaPrevs
+>     ms = V.zipWith3 f deltaPrevs gammaPrevs
 >                       (V.zipWith3 (\s i r -> [s, i, r]) sPrevs iPrevs rPrevs)
 >
 >     ns :: V.Vector (VS.Vector Double)
@@ -140,7 +140,7 @@ The usual Bayesian update step.
 >     ss     = V.map (VS.! 0) ns
 >     is     = V.map (VS.! 1) ns
 >     rs     = V.map (VS.! 2) ns
->     betas  = betaPrevs
+>     deltas  = deltaPrevs
 >     gammas = gammaPrevs
 
 
@@ -155,25 +155,29 @@ The usual Bayesian update step.
 > stateUpdateNoisy bigQ xPrevs = do
 >   let xs = stateUpdate xPrevs
 >
+>       sPrevs :: V.Vector Double
 >       sPrevs     = V.map stateS     xs
 >       iPrevs     = V.map stateI     xs
 >       rPrevs     = V.map stateR     xs
->       betaPrevs  = V.map stateBeta  xs
+>       deltaPrevs = V.map stateDelta xs
 >       gammaPrevs = V.map stateGamma xs
 >
->   let ix     = V.length xPrevs
->   etas <- replicateM ix $ sample $ rvar (MultivariateNormal 0.0 bigQ)
->   let eta1s, eta2s, eta3s, eta4s, eta5s :: V.Vector Double
->       eta1s = V.fromList $ map (fst . headTail) etas
->       eta2s = V.fromList $ map (fst . headTail . snd . headTail) etas
->       eta3s = V.fromList $ map (fst . headTail . snd . headTail . snd . headTail) etas
->       eta4s = V.fromList $ map (fst . headTail . snd . headTail . snd . headTail .
->                                 snd . headTail) etas
->       eta5s = V.fromList $ map (fst . headTail . snd . headTail . snd . headTail .
->                                 snd . headTail . snd . headTail) etas
+>   let mus :: V.Vector (R 5)
+>       mus = V.zipWith5 (\a b c d e -> vector (map log [a, b, c, d, e]))
+>                        sPrevs iPrevs rPrevs deltaPrevs gammaPrevs
 >
->   return (V.zipWith5 SystemState (sPrevs .+ eta1s) (iPrevs .+ eta2s) (rPrevs .+ eta3s)
->                                  (betaPrevs .+ eta4s) (gammaPrevs .+ eta5s))
+>   nus <- mapM (\mu -> fmap exp $ sample $ rvar (MultivariateNormal mu bigQ)) mus
+>
+>   let nu1s, nu2s, nu3s, nu4s, nu5s :: V.Vector Double
+>       nu1s = V.map (fst . headTail) nus
+>       nu2s = V.map (fst . headTail . snd . headTail) nus
+>       nu3s = V.map (fst . headTail . snd . headTail . snd . headTail) nus
+>       nu4s = V.map (fst . headTail . snd . headTail . snd . headTail .
+>                     snd . headTail) nus
+>       nu5s = V.map (fst . headTail . snd . headTail . snd . headTail .
+>                     snd . headTail . snd . headTail) nus
+>
+>   return (V.zipWith5 SystemState nu1s nu2s nu3s nu4s nu5s)
 
 > newtype SystemObs a = SystemObs { obsI  :: a }
 >   deriving Show
@@ -183,7 +187,7 @@ The usual Bayesian update step.
 > obsUpdate xs = V.map (SystemObs . stateI) xs
 
 > priorMu :: R 5
-> priorMu = vector [initS, initI, initR, log beta, log gamma]
+> priorMu = vector [log initS, log initI, log initR, log 0.005 {- delta -}, log 0.4 {- gamma -}]
 
 > bigP :: Sym 5
 > bigP = sym $ matrix [
@@ -198,15 +202,15 @@ The usual Bayesian update step.
 >                  m (Particles (SystemState Double))
 > initParticles = V.replicateM nParticles $ do
 >   r <- sample $ rvar (MultivariateNormal priorMu bigP)
->   let x1 = fst $ headTail r
->       x2 = fst $ headTail $ snd $ headTail r
->       x3 = fst $ headTail $ snd $ headTail $ snd $ headTail r
+>   let x1 = exp $ fst $ headTail r
+>       x2 = exp $ fst $ headTail $ snd $ headTail r
+>       x3 = exp $ fst $ headTail $ snd $ headTail $ snd $ headTail r
 >       x4 = exp $ fst $ headTail $ snd $ headTail $ snd $ headTail $
 >            snd $ headTail r
 >       x5 = exp $ fst $ headTail $ snd $ headTail $ snd $ headTail $
 >            snd $ headTail $ snd $ headTail r
 >   return $ SystemState { stateS = x1, stateI = x2, stateR = x3,
->                          stateBeta = x4, stateGamma = x5}
+>                          stateDelta = x4, stateGamma = x5}
 
 > gens :: [[Double]]
 > gens = map toList $ toRows $ tr sol
@@ -246,9 +250,6 @@ The usual Bayesian update step.
 > testFiltering :: [Double]
 > testFiltering = map ((/ (fromIntegral nParticles)). sum . V.map stateGamma) runFilter
 
-> sol1 :: Matrix Double
-> sol1 = odeSolve (sirOde 0.005 2.5) [initS, initI, initR] (fromList [0.0,deltaT..14.0])
-
 > testFilteringF :: (([Double], [Double]), [Double])
 > testFilteringF = ((s, i), r)
 >   where
@@ -257,13 +258,18 @@ The usual Bayesian update step.
 >     i = map ((/ (fromIntegral nParticles)). sum . V.map stateI) ps
 >     r = map ((/ (fromIntegral nParticles)). sum . V.map stateR) ps
 
-> testFilteringS :: (([[Double]], [[Double]]), [[Double]])
-> testFilteringS = ((s, i), r)
+> type ParticleStream = [[Double]]
+
+> testFilteringS ::
+>   (ParticleStream, (ParticleStream, (ParticleStream, (ParticleStream, ParticleStream))))
+> testFilteringS = (s, (i, (r, (d, g))))
 >   where
 >     ps = runFilter
 >     s = map (take 200 . V.toList . V.map stateS) ps
 >     i = map (take 200 . V.toList . V.map stateI) ps
 >     r = map (take 200 . V.toList . V.map stateR) ps
+>     d = map (take 200 . V.toList . V.map stateDelta) ps
+>     g = map (take 200 . V.toList . V.map stateGamma) ps
 
 Notes
 =====

@@ -62,6 +62,31 @@ chartSirGen title acts obs ests = toRenderable layout
            $ layout_x_axis . laxis_override .~ axisGridHide
            $ def
 
+diagSirParticles :: String ->
+                    [(Double, Double)] ->
+                    Diagram Cairo
+diagSirParticles t l =
+  fst $ runBackend denv (render (chartSirParticles t l) (600, 500))
+
+chartSirParticles :: String ->
+                     [(Double, Double)] ->
+                     Renderable ()
+chartSirParticles title acts = toRenderable layout
+  where
+
+    actuals = plot_points_values .~ acts
+            $ plot_points_style  . point_color .~ opaque red
+            $ plot_points_title .~ "Particles"
+            $ def
+
+    layout = layout_title .~ title
+           $ layout_plots .~ [toPlot actuals]
+           $ layout_y_axis . laxis_title .~ "Infected"
+           $ layout_y_axis . laxis_override .~ axisGridHide
+           $ layout_x_axis . laxis_title .~ "Time"
+           $ layout_x_axis . laxis_override .~ axisGridHide
+           $ def
+
 
 displayHeader :: FilePath -> Diagram B -> IO ()
 displayHeader fn =
@@ -80,4 +105,18 @@ main = do
                                (zip [0,1..] ss)
                                (zip [0,1..] is)
                                (zip [0,1..] rs))
+  let xs = testFilteringF
+      ss = fst $ fst xs
+      is = snd $ fst xs
+      rs = snd xs
+  displayHeader "diagrams/Sir1.png"
+                (diagSirGen "Influenza Outbreak"
+                               (zip [0,1..] ss)
+                               (zip [0,1..] is)
+                               (zip [0,1..] rs))
+  let ys = testFilteringS
+      is = snd $ fst ys
+      js = concat $ zipWith (\i ps -> zip (repeat i) ps) [0,1..] is
+  displayHeader "diagrams/SirParts.png"
+                (diagSirParticles "Influenza Outbreak" js)
   putStrLn "Hello"

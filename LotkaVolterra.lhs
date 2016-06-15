@@ -38,7 +38,7 @@ species.
 > {-# LANGUAGE DataKinds                    #-}
 > {-# LANGUAGE ExplicitForAll               #-}
 
-> module OdeExample where
+> module LotkaVolterra where
 
 > import Numeric.GSL.ODE
 > import Numeric.LinearAlgebra hiding ( R, vector, matrix, sym )
@@ -88,13 +88,22 @@ species.
 > initR = 0.01
 
 > a1, a2, b1, b2 :: Double
-> a1 = undefined
-> a2 = undefined
-> b1 = undefined
-> b2 = undefined
+
+a1 = 0.5
+a2 = 0.02
+b1 = 0.4
+b2 = 0.004
+
+> a1 = 0.7509811
+> a2 = 0.2133682
+> b1 = 0.6937935
+> b2 = 0.6497548
 
 > sol :: Matrix Double
 > sol = odeSolve (sirOde delta gamma) [initS, initI, initR] (fromList [0.0,deltaT..14.0])
+
+> solLv :: Matrix Double
+> solLv = odeSolve (lvOde a1 a2 b1 b2) [50.0, 50.0] (fromList [0.0,0.1..50])
 
 > nParticles :: Int
 > nParticles = 10000
@@ -316,6 +325,27 @@ post.
 >       | u <= l    = l
 >       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
 >       where k = l + (u - l) `shiftR` 1
+
+The Model Expanded
+------------------
+
+$$
+\begin{eqnarray}
+\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{11} x  - \beta_{12} xy \\
+\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{22} xy - \beta_{21} y \\
+\frac{\mathrm{d}\beta_{11}}{\mathrm{d}t} & = & \theta_{{11}}\mathrm{d}W_{{11}}(t) \\
+\frac{\mathrm{d}\beta_{12}}{\mathrm{d}t} & = & \theta_{{12}}\mathrm{d}W_{{12}}(t) \\
+\frac{\mathrm{d}\beta_{21}}{\mathrm{d}t} & = & \theta_{{21}}\mathrm{d}W_{{21}}(t) \\
+\frac{\mathrm{d}\beta_{22}}{\mathrm{d}t} & = & \theta_{{22}}\mathrm{d}W_{{22}}(t)
+\end{eqnarray}
+$$
+
+LibBi
+-----
+
+~~~~{.CPP include="LV.bi"}
+~~~~
+
 
 Bibliography
 ============

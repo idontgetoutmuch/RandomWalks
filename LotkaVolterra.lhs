@@ -14,8 +14,8 @@ model of a very simple predator-prey ecosystem.
 
 $$
 \begin{eqnarray}
-\frac{\mathrm{d}x}{\mathrm{d}t} & = & a_1 x  - a_2 xy \label{eq2a} \\
-\frac{\mathrm{d}y}{\mathrm{d}t} & = & b_2 xy - b_1 y \label{eq2b}
+\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{00} x  - \beta{01} xy \label{eq2a} \\
+\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{11} xy - \beta{10} y \label{eq2b}
 \end{eqnarray}
 $$
 
@@ -27,62 +27,69 @@ species.
 
 ![](diagrams/HaresLynxes.png)
 
+We can capture the fact that we do not have a complete model by
+describing our state of ignorance about the parameters. In order to
+keep this as simple as possible let us assume that log parameters
+undergo Brownian motion. That is, we know the parameters will jiggle
+around and the further into the future we look the less certain we are
+about what values they will have taken. By making the log parameters
+undergo Brownian motion, we can also capture our modelling assumption
+that birth, death and predation rates are always positive. A similar
+approach is taken in @Dureau2013 where the (log) parameters of an
+epidemiological model are taken to be Ornstein-Uhlenbeck processes
+(which is biologically more plausible although adds to the complexity
+of the model something we wish to avoid in an example such as this).
+
+@Andrieu2010 propose a method to estimate the parameters of such
+models and the domain specific probabilistic language LibBi (@Murray)
+can be used to apply this (and other inference methods).
+
+Some Typical Data
+=================
+
+Rather than start with actual data for which we do not know the
+parameters, let us start with some generated data and add some
+noise. Since at some point in the future, I plan to produce Haskell
+versions of the methods given in @Andrieu2010, let's generate the data
+using Haskell.
+
 > {-# OPTIONS_GHC -Wall                     #-}
 > {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
 
-
-> module LotkaVolterra where
+> module LotkaVolterra ( solLv )where
 
 > import Numeric.GSL.ODE
 > import Numeric.LinearAlgebra hiding ( R, vector, matrix, sym )
 
-
-> lvOde :: Double -> Double -> Double -> Double -> Double -> [Double] -> [Double]
-> lvOde a1 a2 b1 b2 _t [h, l] =
+> lvOde :: Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          [Double] ->
+>          [Double]
+> lvOde beta00 beta01 beta10 beta11 _t [h, l] =
 >   [
->     a1 * h - a2 * h * l
->   , b2 * h * l - b1 * l
+>     beta00 * h - beta01 * h * l
+>   , beta11 * h * l - beta10 * l
 >   ]
-> lvOde _a1 _a2 _b1 _b2 _t vars = error $ "lvOde called with: " ++ show (length vars) ++ " variable"
+> lvOde _beta00 _beta01 _beta10 _beta11 _t vars =
+>   error $ "lvOde called with: " ++ show (length vars) ++ " variable"
 
-> sirOde :: Double -> Double -> Double -> [Double] -> [Double]
-> sirOde delta gamma _t [s, i, _r] =
->   [
->     negate (delta * i * s)
->   , (delta * i * s) - (gamma * i)
->   , gamma * i
->   ]
-> sirOde _b _g _t vars = error $ "sirOde called with: " ++ show (length vars) ++ " variable"
+> beta00, beta01, beta10, beta11 :: Double
 
-> delta, gamma :: Double
-> delta = 0.0026
-> gamma = 0.5
-
-> initS, initI, initR :: Double
-> initS = 762.0
-> initI = 1.0
-> initR = 0.01
-
-> a1, a2, b1, b2 :: Double
-
-a1 = 0.5
-a2 = 0.02
-b1 = 0.4
-b2 = 0.004
-
-> a1 = 0.7509811
-> a2 = 0.2133682
-> b1 = 0.6937935
-> b2 = 0.6497548
+> beta00 = 0.5
+> beta01 = 0.02
+> beta10 = 0.4
+> beta11 = 0.004
 
 > deltaT :: Double
-> deltaT = 1.0
-
-> sol :: Matrix Double
-> sol = odeSolve (sirOde delta gamma) [initS, initI, initR] (fromList [0.0,deltaT..14.0])
+> deltaT = 0.1
 
 > solLv :: Matrix Double
-> solLv = odeSolve (lvOde a1 a2 b1 b2) [50.0, 50.0] (fromList [0.0,0.1..50])
+> solLv = odeSolve (lvOde beta00 beta01 beta10 beta11)
+>                  [50.0, 50.0]
+>                  (fromList [0.0, deltaT .. 50])
 
 The Model Expanded
 ------------------

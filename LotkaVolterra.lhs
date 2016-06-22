@@ -14,8 +14,8 @@ model of a very simple predator-prey ecosystem.
 
 $$
 \begin{eqnarray}
-\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{00} x  - \beta{01} xy \label{eq2a} \\
-\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{11} xy - \beta{10} y \label{eq2b}
+\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{00} x  - \beta_{01} xy \label{eq2a} \\
+\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{11} xy - \beta_{10} y \label{eq2b}
 \end{eqnarray}
 $$
 
@@ -38,11 +38,28 @@ that birth, death and predation rates are always positive. A similar
 approach is taken in @Dureau2013 where the (log) parameters of an
 epidemiological model are taken to be Ornstein-Uhlenbeck processes
 (which is biologically more plausible although adds to the complexity
-of the model something we wish to avoid in an example such as this).
+of the model, something we wish to avoid in an example such as this).
 
 @Andrieu2010 propose a method to estimate the parameters of such
-models and the domain specific probabilistic language LibBi (@Murray)
-can be used to apply this (and other inference methods).
+models and the domain specific probabilistic language
+[LibBi](http://libbi.org/) (@Murray) can be used to apply this (and
+other inference methods).
+
+A Dynamical System Aside
+========================
+
+The above dynamical system is structurally unstable (more on this in a
+future post), a possible indication that it should not be considered
+as a good model of predator–prey interaction. Let us modify this to
+include carrying capacities for the populations of both species.
+
+$$
+\begin{eqnarray}
+\frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1 \bigg(1 - \frac{N_1}{K_1}\bigg) - c_1 N_1 N_2 \\
+\frac{\mathrm{d}N_2}{\mathrm{d}t} & = & -\rho_2 N_2 \bigg(1 + \frac{N_2}{K_2}\bigg) + c_2 N_1 N_2
+\end{eqnarray}
+$$
+
 
 Some Typical Data
 =================
@@ -56,10 +73,16 @@ using Haskell.
 > {-# OPTIONS_GHC -Wall                     #-}
 > {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
 
-> module LotkaVolterra ( solLv )where
+> module LotkaVolterra (
+>     solLv
+>   , solPz
+>   , solPp
+>   , h0
+>   , l0
+>   )where
 
 > import Numeric.GSL.ODE
-> import Numeric.LinearAlgebra hiding ( R, vector, matrix, sym )
+> import Numeric.LinearAlgebra -- hiding ( R, vector, matrix, sym )
 
 > lvOde :: Double ->
 >          Double ->
@@ -90,6 +113,109 @@ using Haskell.
 > solLv = odeSolve (lvOde beta00 beta01 beta10 beta11)
 >                  [50.0, 50.0]
 >                  (fromList [0.0, deltaT .. 50])
+
+![](diagrams/LV.png)
+
+> pzOde :: Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          [Double] ->
+>          [Double]
+> pzOde alpha c e m_l m_q _t [p, z] =
+>   [
+>     alpha * p - c * p * z
+>   , e * c * p * z - m_l * z - m_q * z * z
+>   ]
+> pzOde _alpha _c _e _m_l _m_q _t vars =
+>   error $ "pzOde called with: " ++ show (length vars) ++ " variable"
+
+> alpha, c, e, m_l, m_q :: Double
+> alpha = 1.473318 -- 0.50 -- phytoplankton growth rate
+> c     = 0.25 -- 0.02 -- zooplankton clearance rate
+> e     = 0.3 -- 1.00 -- zooplankton growth efficiency
+> m_l   = 0.1 -- 0.40 -- zooplankton linear mortality
+> m_q   = 0.1 --0.01 -- 0.1 -- zooplankton quadratic mortality
+
+  const c = 0.25   // zooplankton clearance rate
+  const e = 0.3    // zooplankton growth efficiency
+  const m_l = 0.1  // zooplankton linear mortality
+  const m_q = 0.1  // zooplankton quadratic mortality
+
+  const c = 0.02   // zooplankton clearance rate
+  const e = 3.0    // zooplankton growth efficiency
+  const m_l = 0.1  // zooplankton linear mortality
+  const m_q = 0.1  // zooplankton quadratic mortality
+
+> ppOde :: Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          [Double] ->
+>          [Double]
+> ppOde a k1 b d k2 c _t [p, z] =
+>   [
+>     a * p * (1 - p / k1) - b * p * z
+>   , -d * z * (1 + z / k2) + c * p * z
+>   ]
+> ppOde _a _k1 _b _d _k2 _c _t vars =
+>   error $ "pzOde called with: " ++ show (length vars) ++ " variable"
+
+> a', k1, b', d', k2, c' :: Double
+> a' = alpha
+> k1 = 200.0
+> b' = c
+> d' = m_l
+> k2 = d' / m_q
+> c' = e * c
+
+Reasonable parameters are 0.5, 0.02, 0.4 and 0.01.
+
+> a'', k1', b'', d'', k2', c'' :: Double
+> a'' = 0.5
+> k1' = 200.0
+> b'' = 0.02
+> d'' = 0.4
+> k2' = 50.0
+> c'' = 0.004
+
+> h :: Double
+> h = 0.02 -- time step
+
+> solPz :: Matrix Double
+> solPz = odeSolve (pzOde alpha c e m_l m_q)
+>                  [10.0, 5.0]
+>                  (fromList [0.0, deltaT .. 50])
+
+> solPp :: Double -> Double -> Matrix Double
+> solPp x y = odeSolve (ppOde a'' k1' b'' d'' k2' c'')
+>                  [x, y]
+>                  (fromList [0.0, deltaT .. 50])
+
+> gamma' = d'' / a''
+> alpha' = a'' / (c'' * k1')
+> beta'  = d'' / (a'' * k2')
+
+> fp = ((gamma' + beta') / (1 + alpha' * beta'), (1 - gamma' * alpha') / (1 + alpha' * beta'))
+
+> h0 = a'' * fst fp / c''
+> l0 = a'' * snd fp / b''
+
+> foo = matrix 2 [a'' / k1', b'', c'', negate d'' / k2']
+> bar = matrix 1 [a'', d'']
+> baz = linearSolve foo bar
+
+This gives a stable fixed point of
+
+    [ghci]
+    baz
+
+![](diagrams/PP.png)
 
 The Model Expanded
 ------------------

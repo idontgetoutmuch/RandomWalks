@@ -217,6 +217,10 @@ This gives a stable fixed point of
 
 ![](diagrams/PP.png)
 
+We can create almost the same diagram via LibBi and R.
+
+![](diagrams/PPviaLibBi.png)
+
 The Model Expanded
 ------------------
 

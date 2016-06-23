@@ -112,3 +112,24 @@ ggplot(df, aes(rdata_PP$P$nr, y = value, color = variable)) +
 
 ggplot(df, aes(rdata_PP$P$value, y = value, color = variable)) +
     geom_line(aes(y = rdata_PP$Z$value, col = "Zoo"))
+
+PP1 <- bi_model("PP1.bi")
+synthetic_dataset_PP1 <- bi_generate_dataset(endtime=T,
+                                             model=PP1,
+                                             seed="42",
+                                             verbose=TRUE,
+                                             add_options = list(
+                                                 noutputs=500))
+
+rdata_PP1 <- bi_read(synthetic_dataset_PP1)
+
+df1 <- data.frame(hare = rdata_PP$P$value,
+                  lynx = rdata_PP$Z$value,
+                  hare1 = rdata_PP1$P$value,
+                  lynx1 = rdata_PP1$Z$value)
+
+ggplot(df1) +
+    geom_path(aes(x=df1$hare,  y=df1$lynx, col = "red")) +
+    geom_path(aes(x=df1$hare1, y=df1$lynx1), col = "blue") +
+    ggtitle("Test 1")
+ggsave(filename="diagrams/PPviaLibBi.png",width=3,height=3)

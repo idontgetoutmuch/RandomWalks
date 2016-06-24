@@ -17,6 +17,7 @@ model PP {
   state ln_alpha   // Hare growth rate - we express it in log form for
                    // consistency with the inference model
   obs P_obs        // Observations of hares
+  param sigma  // mean and standard deviation of phytoplankton growth
 
   sub initial {
     P ~ log_normal(log(100.0), 0.2)

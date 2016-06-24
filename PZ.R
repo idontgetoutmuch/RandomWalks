@@ -16,10 +16,10 @@ library('RBi.helpers')
 library('ggplot2', quietly = TRUE)
 library('gridExtra', quietly = TRUE)
 
-T <- 50
+nTimeSteps <- 50
 
 LV <- bi_model("LV.bi")
-synthetic_dataset <- bi_generate_dataset(endtime=T,
+synthetic_dataset <- bi_generate_dataset(endtime=nTimeSteps,
                                          model=LV,
                                          seed="42")
 
@@ -33,8 +33,8 @@ ggplot(df, aes(rdata$H$nr, y = value, color = variable)) +
 bi_object <- libbi(client="sample", model=LV, obs = synthetic_dataset)
 
 bi_object$run(add_options = list(
-                  "end-time" = T,
-                  noutputs = T,
+                  "end-time" = nTimeSteps,
+                  noutputs = nTimeSteps,
                   nsamples = 128,
                   nparticles = 128,
                   seed=42,
@@ -49,7 +49,7 @@ mu <- bi_read(bi_object, "mu")$value
 ## The Working Model
 
 PZ <- bi_model("PZ.bi")
-synthetic_dataset_PZ <- bi_generate_dataset(endtime=T,
+synthetic_dataset_PZ <- bi_generate_dataset(endtime=nTimeSteps,
                                             model=PZ,
                                             seed="42",
                                             verbose=TRUE,
@@ -71,8 +71,8 @@ ggplot(df, aes(rdata_PZ$P$nr, y = value, color = variable)) +
 bi_object_PZ <- libbi(client="sample", model=PZ, obs = synthetic_dataset_PZ)
 
 bi_object_PZ$run(add_options = list(
-                     "end-time" = T,
-                     noutputs = T,
+                     "end-time" = nTimeSteps,
+                     noutputs = nTimeSteps,
                      nsamples = 2^13,
                      nparticles = 2^7,
                      seed=42,
@@ -91,7 +91,7 @@ grid.arrange(g1_PZ, g2_PZ)
 ## The Working Model
 
 PP <- bi_model("PP.bi")
-synthetic_dataset_PP <- bi_generate_dataset(endtime=T,
+synthetic_dataset_PP <- bi_generate_dataset(endtime=nTimeSteps,
                                             model=PP,
                                             seed="42",
                                             verbose=TRUE,
@@ -113,9 +113,9 @@ ggplot(df, aes(rdata_PP$P$nr, y = value, color = variable)) +
 ggplot(df, aes(rdata_PP$P$value, y = value, color = variable)) +
     geom_line(aes(y = rdata_PP$Z$value, col = "Zoo"))
 
-PP1 <- bi_model("PP1.bi")
-synthetic_dataset_PP1 <- bi_generate_dataset(endtime=T,
-                                             model=PP1,
+synthetic_dataset_PP1 <- bi_generate_dataset(endtime=nTimeSteps,
+                                             model=PP,
+                                             init = list(P = 100, Z=50),
                                              seed="42",
                                              verbose=TRUE,
                                              add_options = list(
@@ -123,13 +123,56 @@ synthetic_dataset_PP1 <- bi_generate_dataset(endtime=T,
 
 rdata_PP1 <- bi_read(synthetic_dataset_PP1)
 
+synthetic_dataset_PP2 <- bi_generate_dataset(endtime=nTimeSteps,
+                                             model=PP,
+                                             init = list(P = 150, Z=25),
+                                             seed="42",
+                                             verbose=TRUE,
+                                             add_options = list(
+                                                 noutputs=500))
+
+rdata_PP2 <- bi_read(synthetic_dataset_PP2)
+
 df1 <- data.frame(hare = rdata_PP$P$value,
                   lynx = rdata_PP$Z$value,
                   hare1 = rdata_PP1$P$value,
-                  lynx1 = rdata_PP1$Z$value)
+                  lynx1 = rdata_PP1$Z$value,
+                  hare2 = rdata_PP2$P$value,
+                  lynx2 = rdata_PP2$Z$value)
 
 ggplot(df1) +
-    geom_path(aes(x=df1$hare,  y=df1$lynx, col = "red")) +
-    geom_path(aes(x=df1$hare1, y=df1$lynx1), col = "blue") +
+    geom_path(aes(x=df1$hare,  y=df1$lynx, col = "0")) +
+    geom_path(aes(x=df1$hare1, y=df1$lynx1, col = "1")) +
+    geom_path(aes(x=df1$hare2, y=df1$lynx2, col = "2")) +
     ggtitle("Test 1")
 ggsave(filename="diagrams/PPviaLibBi.png",width=3,height=3)
+
+PPInfer <- bi_model("PPInfer.bi")
+
+bi_object_PP <- libbi(client="sample", model=PPInfer, obs = synthetic_dataset_PP)
+
+bi_object_PP$run(add_options = list(
+                     "end-time" = nTimeSteps,
+                     noutputs = nTimeSteps,
+                     nsamples = 2000,
+                     nparticles = 128,
+                     seed=42,
+                     nthreads = 1),
+                 verbose = TRUE,
+                 stdoutput_file_name = tempfile(pattern="pmmhoutput", fileext=".txt"))
+
+bi_file_summary(bi_object_PP$result$output_file_name)
+
+mu <- bi_read(bi_object_PP, "mu")$value
+g1 <- qplot(x = mu, y = ..density.., geom = "histogram") + xlab(expression(mu))
+sigma <- bi_read(bi_object_PP, "sigma")$value
+g2 <- qplot(x = sigma, y = ..density.., geom = "histogram") + xlab(expression(sigma))
+grid.arrange(g1, g2)
+
+df2 <- data.frame(hareActs = rdata_PP$P$value,
+                  hareObs  = rdata_PP$P_obs$value)
+
+ggplot(df, aes(rdata_PP$P$nr, y = value, color = variable)) +
+    geom_line(aes(y = rdata_PP$P$value, col = "Phyto")) +
+    geom_line(aes(y = rdata_PP$Z$value, col = "Zoo")) +
+    geom_point(aes(y = rdata_PP$P_obs$value, col = "Phyto Obs"))

@@ -1,7 +1,7 @@
 ## We only need this if we want to get HEAD.
 ## install.packages("devtools")
 library(devtools)
-install_github("sbfnk/RBi",ref="c56b7b7")
+install_github("sbfnk/RBi",ref="master")
 install_github("sbfnk/RBi.helpers",ref="master")
 
 rm(list = ls(all.names=TRUE))
@@ -38,8 +38,6 @@ ggplot(df, aes(rdata_PP$P$nr, y = value, color = variable)) +
     geom_line(aes(y = rdata_PP$Z$value, col = "Zoo")) +
     geom_point(aes(y = rdata_PP$P_obs$value, col = "Phyto Obs"))
 
-ggplot(df, aes(rdata_PP$P$value, y = value, color = variable)) +
-    geom_line(aes(y = rdata_PP$Z$value, col = "Zoo"))
 
 synthetic_dataset_PP1 <- bi_generate_dataset(endtime=endTime,
                                              model=PP,
@@ -104,3 +102,27 @@ ggplot(df, aes(rdata_PP$P$nr, y = value, color = variable)) +
     geom_line(aes(y = rdata_PP$P$value, col = "Phyto")) +
     geom_line(aes(y = rdata_PP$Z$value, col = "Zoo")) +
     geom_point(aes(y = rdata_PP$P_obs$value, col = "Phyto Obs"))
+
+ln_alpha <- bi_read(bi_object_PP, "ln_alpha")$value
+
+P <- matrix(bi_read(bi_object_PP, "P")$value,nrow=51,byrow=TRUE)
+Z <- matrix(bi_read(bi_object_PP, "Z")$value,nrow=51,byrow=TRUE)
+
+data50 <- bi_generate_dataset(endtime=endTime,
+                              model=PP,
+                              seed="42",
+                              verbose=TRUE,
+                              add_options = list(
+                                  noutputs=50))
+
+rdata50 <- bi_read(data50)
+
+df3 <- data.frame(days = c(1:51), hares = rowMeans(P), lynxes = rowMeans(Z),
+                                  actHs = rdata50$P$value, actLs = rdata50$Z$value)
+
+
+ggplot(df3) +
+    geom_line(aes(x = days, y = hares, col = "Est Phyto")) +
+    geom_line(aes(x = days, y = lynxes, col = "Est Zoo")) +
+    geom_line(aes(x = days, y = actHs, col = "Act Phyto")) +
+    geom_line(aes(x = days, y = actLs, col = "Act Zoo"))

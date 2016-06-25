@@ -79,23 +79,24 @@ they all converge to the same fixed point.
 Data Generation with Haskell
 ============================
 
-Since at some point in the future, I plan to produce Haskell
-versions of the methods given in @Andrieu2010, let's generate the data
-using Haskell.
+Since at some point in the future, I plan to produce Haskell versions
+of the methods given in @Andrieu2010, let's generate the data using
+Haskell.
 
 > {-# OPTIONS_GHC -Wall                     #-}
 > {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
 
 > module LotkaVolterra (
 >     solLv
->   , solPz
 >   , solPp
 >   , h0
 >   , l0
 >   )where
 
 > import Numeric.GSL.ODE
-> import Numeric.LinearAlgebra -- hiding ( R, vector, matrix, sym )
+> import Numeric.LinearAlgebra
+
+Here's the unstable model.
 
 > lvOde :: Double ->
 >          Double ->
@@ -104,46 +105,29 @@ using Haskell.
 >          Double ->
 >          [Double] ->
 >          [Double]
-> lvOde beta00 beta01 beta10 beta11 _t [h, l] =
+> lvOde rho1 c1 rho2 c2 _t [h, l] =
 >   [
->     beta00 * h - beta01 * h * l
->   , beta11 * h * l - beta10 * l
+>     rho1 * h - c1 * h * l
+>   , c2 * h * l - rho2 * l
 >   ]
-> lvOde _beta00 _beta01 _beta10 _beta11 _t vars =
+> lvOde _rho1 _c1 _rho2 _c2 _t vars =
 >   error $ "lvOde called with: " ++ show (length vars) ++ " variable"
 
-> beta00, beta01, beta10, beta11 :: Double
-
-> beta00 = 0.5
-> beta01 = 0.02
-> beta10 = 0.4
-> beta11 = 0.004
+> rho1, c1, rho2, c2 :: Double
+> rho1 = 0.5
+> c1 = 0.02
+> rho2 = 0.4
+> c2 = 0.004
 
 > deltaT :: Double
 > deltaT = 0.1
 
 > solLv :: Matrix Double
-> solLv = odeSolve (lvOde beta00 beta01 beta10 beta11)
+> solLv = odeSolve (lvOde rho1 c1 rho2 c2)
 >                  [50.0, 50.0]
 >                  (fromList [0.0, deltaT .. 50])
 
 ![](diagrams/LV.png)
-
-> pzOde :: Double ->
->          Double ->
->          Double ->
->          Double ->
->          Double ->
->          Double ->
->          [Double] ->
->          [Double]
-> pzOde alpha c e m_l m_q _t [p, z] =
->   [
->     alpha * p - c * p * z
->   , e * c * p * z - m_l * z - m_q * z * z
->   ]
-> pzOde _alpha _c _e _m_l _m_q _t vars =
->   error $ "pzOde called with: " ++ show (length vars) ++ " variable"
 
 > alpha, c, e, m_l, m_q :: Double
 > alpha = 1.473318 -- 0.50 -- phytoplankton growth rate
@@ -199,11 +183,6 @@ Reasonable parameters are 0.5, 0.02, 0.4 and 0.01.
 
 > h :: Double
 > h = 0.02 -- time step
-
-> solPz :: Matrix Double
-> solPz = odeSolve (pzOde alpha c e m_l m_q)
->                  [10.0, 5.0]
->                  (fromList [0.0, deltaT .. 50])
 
 > solPp :: Double -> Double -> Matrix Double
 > solPp x y = odeSolve (ppOde a'' k1' b'' d'' k2' c'')

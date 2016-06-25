@@ -91,10 +91,16 @@ Haskell.
 >   , solPp
 >   , h0
 >   , l0
+>   , baz
+>   , logBM
 >   )where
 
 > import Numeric.GSL.ODE
 > import Numeric.LinearAlgebra
+
+> import Data.Random.Source.PureMT
+> import Data.Random hiding ( gamma )
+> import Control.Monad.State
 
 Here's the unstable model.
 
@@ -129,22 +135,7 @@ Here's the unstable model.
 
 ![](diagrams/LV.png)
 
-> alpha, c, e, m_l, m_q :: Double
-> alpha = 1.473318 -- 0.50 -- phytoplankton growth rate
-> c     = 0.25 -- 0.02 -- zooplankton clearance rate
-> e     = 0.3 -- 1.00 -- zooplankton growth efficiency
-> m_l   = 0.1 -- 0.40 -- zooplankton linear mortality
-> m_q   = 0.1 --0.01 -- 0.1 -- zooplankton quadratic mortality
-
-  const c = 0.25   // zooplankton clearance rate
-  const e = 0.3    // zooplankton growth efficiency
-  const m_l = 0.1  // zooplankton linear mortality
-  const m_q = 0.1  // zooplankton quadratic mortality
-
-  const c = 0.02   // zooplankton clearance rate
-  const e = 3.0    // zooplankton growth efficiency
-  const m_l = 0.1  // zooplankton linear mortality
-  const m_q = 0.1  // zooplankton quadratic mortality
+And here's the stable model.
 
 > ppOde :: Double ->
 >          Double ->
@@ -161,45 +152,38 @@ Here's the unstable model.
 >   , -d * z * (1 + z / k2) + c * p * z
 >   ]
 > ppOde _a _k1 _b _d _k2 _c _t vars =
->   error $ "pzOde called with: " ++ show (length vars) ++ " variable"
+>   error $ "ppOde called with: " ++ show (length vars) ++ " variable"
 
-> a', k1, b', d', k2, c' :: Double
-> a' = alpha
+> a, k1, b, d, k2, c :: Double
+> a = 0.5
 > k1 = 200.0
-> b' = c
-> d' = m_l
-> k2 = d' / m_q
-> c' = e * c
-
-Reasonable parameters are 0.5, 0.02, 0.4 and 0.01.
-
-> a'', k1', b'', d'', k2', c'' :: Double
-> a'' = 0.5
-> k1' = 200.0
-> b'' = 0.02
-> d'' = 0.4
-> k2' = 50.0
-> c'' = 0.004
-
-> h :: Double
-> h = 0.02 -- time step
+> b = 0.02
+> d = 0.4
+> k2 = 50.0
+> c = 0.004
 
 > solPp :: Double -> Double -> Matrix Double
-> solPp x y = odeSolve (ppOde a'' k1' b'' d'' k2' c'')
+> solPp x y = odeSolve (ppOde a k1 b d k2 c)
 >                  [x, y]
 >                  (fromList [0.0, deltaT .. 50])
 
-> gamma' = d'' / a''
-> alpha' = a'' / (c'' * k1')
-> beta'  = d'' / (a'' * k2')
+> gamma, alpha, beta :: Double
+> gamma = d / a
+> alpha = a / (c * k1)
+> beta  = d / (a * k2)
 
-> fp = ((gamma' + beta') / (1 + alpha' * beta'), (1 - gamma' * alpha') / (1 + alpha' * beta'))
+> fp :: (Double, Double)
+> fp = ((gamma + beta) / (1 + alpha * beta), (1 - gamma * alpha) / (1 + alpha * beta))
 
-> h0 = a'' * fst fp / c''
-> l0 = a'' * snd fp / b''
+> h0, l0 :: Double
+> h0 = a * fst fp / c
+> l0 = a * snd fp / b
 
-> foo = matrix 2 [a'' / k1', b'', c'', negate d'' / k2']
-> bar = matrix 1 [a'', d'']
+> foo, bar :: Matrix R
+> foo = matrix 2 [a / k1, b, c, negate d / k2]
+> bar = matrix 1 [a, d]
+
+> baz :: Maybe (Matrix R)
 > baz = linearSolve foo bar
 
 This gives a stable fixed point of
@@ -207,31 +191,60 @@ This gives a stable fixed point of
     [ghci]
     baz
 
+Here's an example of convergence to that fixed point in phase space.
+
 ![](diagrams/PP.png)
 
-We can create almost the same diagram via LibBi and R.
+The Stochastic Model
+--------------------
 
-![](diagrams/PPviaLibBi.png)
-
-The Model Expanded
-------------------
+Let us now assume that the Hare growth parameter undergoes Brownian
+motion so that the further into the future we go, the less certain we
+are about it. In order to ensure that this parameter remains positive,
+let's model the log of it to be Brownian motion.
 
 $$
 \begin{eqnarray}
-\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{11} x  - \beta_{12} xy \\
-\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{22} xy - \beta_{21} y \\
-\frac{\mathrm{d}\beta_{11}}{\mathrm{d}t} & = & \theta_{{11}}\mathrm{d}W_{{11}}(t) \\
-\frac{\mathrm{d}\beta_{12}}{\mathrm{d}t} & = & \theta_{{12}}\mathrm{d}W_{{12}}(t) \\
-\frac{\mathrm{d}\beta_{21}}{\mathrm{d}t} & = & \theta_{{21}}\mathrm{d}W_{{21}}(t) \\
-\frac{\mathrm{d}\beta_{22}}{\mathrm{d}t} & = & \theta_{{22}}\mathrm{d}W_{{22}}(t)
+\frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1 \bigg(1 - \frac{N_1}{K_1}\bigg) - c_1 N_1 N_2 \\
+\frac{\mathrm{d}N_2}{\mathrm{d}t} & = & -\rho_2 N_2 \bigg(1 + \frac{N_2}{K_2}\bigg) + c_2 N_1 N_2 \\
+\mathrm{d} \rho_1 & = & \rho_1 \sigma_{\rho_1} \mathrm{d}W_t
 \end{eqnarray}
 $$
 
-LibBi
------
+where the final equation is a stochastic differential equation with
+$W_t$ being a Wiener process.
 
-~~~~{.CPP include="LV.bi"}
-~~~~
+By Itô we have
+
+$$
+\mathrm{d} (\log{\rho_1}) = - \frac{\sigma_{\rho_1}^2}{2} \mathrm{d} t + \sigma_{\rho_1} \mathrm{d}W_t
+$$
+
+We can use this to generate paths for $\rho_1$.
+
+$$
+\rho_1(t + \Delta t) = \rho_1(t)\exp{\bigg(- \frac{\sigma_{\rho_1}^2}{2} \Delta t + \sigma_{\rho_1} \sqrt{\Delta t} Z\bigg)}
+$$
+
+where $Z \sim {\mathcal{N}}(0,1)$.
+
+> oneStepLogBM :: MonadRandom m => Double -> Double -> Double -> m Double
+> oneStepLogBM deltaT sigma rhoPrev = do
+>   x <- sample $ rvar StdNormal
+>   return $ rhoPrev * exp(sigma * (sqrt deltaT) * x - 0.5 * sigma * sigma * deltaT)
+
+> iterateM :: Monad m => (a -> m a) -> m a -> Int -> m [a]
+> iterateM f mx n = sequence . take n . iterate (>>= f) $ mx
+
+> logBMM :: MonadRandom m => Double -> Double -> Int -> Int -> m [Double]
+> logBMM initRho sigma n m =
+>   iterateM (oneStepLogBM (recip $ fromIntegral n) sigma) (return initRho) (n * m)
+
+> logBM :: Double -> Double -> Int -> Int -> Int -> [Double]
+> logBM initRho sigma n m seed =
+>   evalState (logBMM initRho sigma n m) (pureMT $ fromIntegral seed)
+
+![](diagrams/LogBrownianPaths.png)
 
 
 Bibliography

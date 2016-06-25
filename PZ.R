@@ -1,5 +1,4 @@
-## We only need this if we want to get HEAD.
-## install.packages("devtools")
+install.packages("devtools")
 library(devtools)
 install_github("sbfnk/RBi",ref="master")
 install_github("sbfnk/RBi.helpers",ref="master")
@@ -33,11 +32,17 @@ df <- data.frame(rdata_PP$P$nr,
                  rdata_PP$Z$value,
                  rdata_PP$P_obs$value)
 
-ggplot(df, aes(rdata_PP$P$nr, y = value, color = variable)) +
-    geom_line(aes(y = rdata_PP$P$value, col = "Phyto")) +
-    geom_line(aes(y = rdata_PP$Z$value, col = "Zoo")) +
-    geom_point(aes(y = rdata_PP$P_obs$value, col = "Phyto Obs"))
-
+ggplot(df, aes(rdata_PP$P$nr, y = Population, color = variable), size = 0.1) +
+    geom_line(aes(y = rdata_PP$P$value, col = "Hare"), size = 0.1) +
+    geom_line(aes(y = rdata_PP$Z$value, col = "Lynx"), size = 0.1) +
+    geom_point(aes(y = rdata_PP$P_obs$value, col = "Observations"), size = 0.1) +
+    theme(legend.position="none") +
+    ggtitle("Example Data") +
+    xlab("Days") +
+    theme(axis.text=element_text(size=4),
+          axis.title=element_text(size=6,face="bold")) +
+    theme(plot.title = element_text(size=10))
+ggsave(filename="diagrams/LVdata.png",width=4,height=3)
 
 synthetic_dataset_PP1 <- bi_generate_dataset(endtime=endTime,
                                              model=PP,
@@ -67,11 +72,17 @@ df1 <- data.frame(hare = rdata_PP$P$value,
                   lynx2 = rdata_PP2$Z$value)
 
 ggplot(df1) +
-    geom_path(aes(x=df1$hare,  y=df1$lynx, col = "0")) +
-    geom_path(aes(x=df1$hare1, y=df1$lynx1, col = "1")) +
-    geom_path(aes(x=df1$hare2, y=df1$lynx2, col = "2")) +
-    ggtitle("Test 1")
-ggsave(filename="diagrams/PPviaLibBi.png",width=3,height=3)
+    geom_path(aes(x=df1$hare,  y=df1$lynx, col = "0"), size = 0.1) +
+    geom_path(aes(x=df1$hare1, y=df1$lynx1, col = "1"), size = 0.1) +
+    geom_path(aes(x=df1$hare2, y=df1$lynx2, col = "2"), size = 0.1) +
+    theme(legend.position="none") +
+    ggtitle("Phase Space") +
+    xlab("Hare") +
+    ylab("Lynx") +
+    theme(axis.text=element_text(size=4),
+          axis.title=element_text(size=6,face="bold")) +
+    theme(plot.title = element_text(size=10))
+ggsave(filename="diagrams/PPviaLibBi.png",width=4,height=3)
 
 PPInfer <- bi_model("PPInfer.bi")
 

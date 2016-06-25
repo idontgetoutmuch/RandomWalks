@@ -14,8 +14,8 @@ model of a very simple predator-prey ecosystem.
 
 $$
 \begin{eqnarray}
-\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{00} x  - \beta_{01} xy \label{eq2a} \\
-\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{11} xy - \beta_{10} y \label{eq2b}
+\frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1  - c_1 N_1 N_2 \label{eq2a} \\
+\frac{\mathrm{d}N_2}{\mathrm{d}t} & = & c_2 N_1 N_2 - \rho_2 N2 \label{eq2b}
 \end{eqnarray}
 $$
 
@@ -60,13 +60,26 @@ $$
 \end{eqnarray}
 $$
 
+Data Generation with LibBi
+==========================
 
-Some Typical Data
-=================
+Let's generate some data using LibBi.
 
-Rather than start with actual data for which we do not know the
-parameters, let us start with some generated data and add some
-noise. Since at some point in the future, I plan to produce Haskell
+~~~~{.CPP include="PP.bi"}
+~~~~
+
+![](diagrams/LVdata.png)
+
+We can look at phase space starting with different populations and see
+they all converge to the same fixed point.
+
+![](diagrams/PPviaLibBi.png)
+
+
+Data Generation with Haskell
+============================
+
+Since at some point in the future, I plan to produce Haskell
 versions of the methods given in @Andrieu2010, let's generate the data
 using Haskell.
 

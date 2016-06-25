@@ -17,20 +17,16 @@ model PP {
   state ln_alpha   // Hare growth rate - we express it in log form for
                    // consistency with the inference model
   obs P_obs        // Observations of hares
-  param sigma  // mean and standard deviation of phytoplankton growth
 
   sub initial {
     P ~ log_normal(log(100.0), 0.2)
     Z ~ log_normal(log(50.0), 0.1)
-    ln_alpha ~ gaussian(log(a), 0.001)
   }
 
   sub transition(delta = h) {
     ode(h = h, atoler = delta_abs, rtoler = delta_rel, alg = 'RK4(3)') {
       dP/dt =  a * P * (1 - P / k1) - b * P * Z
       dZ/dt = -d * Z * (1 + Z / k2) + c * P * Z
-      // Keep the hare growth rate constant
-      dln_alpha/dt = 0.0
     }
   }
 

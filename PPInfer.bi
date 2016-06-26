@@ -37,6 +37,7 @@ model PP {
   }
 
   sub transition(delta = h) {
+    w ~ normal(0.0, sqrt(h));
     ode(h = h, atoler = delta_abs, rtoler = delta_rel, alg = 'RK4(3)') {
       dP/dt =  exp(ln_alpha) * P * (1 - P / k1) - b * P * Z
       dZ/dt = -d * Z * (1 + Z / k2) + c * P * Z

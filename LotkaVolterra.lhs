@@ -93,6 +93,7 @@ Haskell.
 >   , l0
 >   , baz
 >   , logBM
+>   , eulerEx
 >   )where
 
 > import Numeric.GSL.ODE
@@ -246,6 +247,42 @@ where $Z \sim {\mathcal{N}}(0,1)$.
 
 ![](diagrams/LogBrownianPaths.png)
 
+> f1, f2 :: Double -> Double -> Double ->
+>           Double -> Double ->
+>           Double
+> f1 a k1 b p z = a * p * (1 - p / k1) - b * p * z
+> f2 d k2 c p z = -d * z * (1 + z / k2) + c * p * z
+
+> oneStepEuler :: MonadRandom m =>
+>                 Double ->
+>                 Double ->
+>                 Double -> Double ->
+>                 Double -> Double -> Double ->
+>                 (Double, Double, Double) ->
+>                 m (Double, Double, Double)
+> oneStepEuler deltaT sigma k1 b d k2 c (rho1Prev, pPrev, zPrev) = do
+>     let pNew = pPrev + deltaT * f1 (exp rho1Prev) k1 b pPrev zPrev
+>     let zNew = zPrev + deltaT * f2 d k2 c pPrev zPrev
+>     rho1New <- oneStepLogBM deltaT sigma rho1Prev
+>     return (rho1New, pNew, zNew)
+
+> euler :: MonadRandom m =>
+>          (Double, Double, Double) ->
+>          Double ->
+>          Double -> Double ->
+>          Double -> Double -> Double ->
+>          Int -> Int ->
+>          m [(Double, Double, Double)]
+> euler stateInit sigma k1 b d k2 c n m =
+>   iterateM (oneStepEuler (recip $ fromIntegral n) sigma k1 b d k2 c)
+>            (return stateInit)
+>            (n * m)
+
+> eulerEx :: (Double, Double, Double) ->
+>            Double -> Int -> Int -> Int ->
+>            [(Double, Double, Double)]
+> eulerEx stateInit sigma n m seed =
+>   evalState (euler stateInit sigma k1 b d k2 c n m) (pureMT $ fromIntegral seed)
 
 Bibliography
 ============

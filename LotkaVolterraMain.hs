@@ -63,6 +63,14 @@ displayHeader fn =
 sims :: [[Double]]
 sims = map (logBM 1.0 0.05 100 1) [1..10]
 
+sims' :: [[(Double, Double, Double)]]
+sims' = map (eulerEx (log 0.5, 100.0, 50.0) 0.05 100 30) [3]
+
+rho1ss, pss, zss :: [[Double]]
+rho1ss = map (map (\(x, _, _) -> x)) sims'
+pss    = map (map (\(_, y, _) -> y)) sims'
+zss    = map (map (\(_, _, z) -> z)) sims'
+
 chart :: String ->
          [[(Double, Double)]] ->
          Renderable ()
@@ -91,19 +99,23 @@ diag t xss =
 
 main :: IO ()
 main = do
-  let xs = map toList $ toRows $ tr $ solPp h0 l0 -- 100.0 50.0
-      ps = xs!!0
-      zs = xs!!1
-  let ys = map toList $ toRows $ tr $ solPp h0 l0 -- 100.0 25.0
-      ps' = ys!!0
-      zs' = ys!!1
-  displayHeader "diagrams/PP.png"
-                (diagSirGen "Hares and Lynxes"
-                               (zip ps zs)
-                               (zip ps' zs'))
+  -- let xs = map toList $ toRows $ tr $ solPp h0 l0 -- 100.0 50.0
+  --     ps = xs!!0
+  --     zs = xs!!1
+  -- let ys = map toList $ toRows $ tr $ solPp h0 l0 -- 100.0 25.0
+  --     ps' = ys!!0
+  --     zs' = ys!!1
+  -- displayHeader "diagrams/PP.png"
+  --               (diagSirGen "Hares and Lynxes"
+  --                              (zip ps zs)
+  --                              (zip ps' zs'))
 
-  displayHeader "diagrams/LogBrownianPaths.png"
-                (diag "Sample Paths for Log Brownian Motion"
-                 (map (zip [0..]) sims))
+  -- displayHeader "diagrams/LogBrownianPaths.png"
+  --               (diag "Sample Paths for Log Brownian Motion"
+  --                (map (zip [0..]) sims))
+
+  displayHeader "diagrams/StochPathsA.png"
+                (diag "Sample Paths for Stochastic LV"
+                 [zip [0..] (pss!!0), zip [0..] (zss!!0)])
 
   putStrLn "Hello"

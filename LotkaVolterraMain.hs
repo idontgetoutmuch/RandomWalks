@@ -99,23 +99,23 @@ diag t xss =
 
 main :: IO ()
 main = do
-  -- let xs = map toList $ toRows $ tr $ solPp h0 l0 -- 100.0 50.0
-  --     ps = xs!!0
-  --     zs = xs!!1
-  -- let ys = map toList $ toRows $ tr $ solPp h0 l0 -- 100.0 25.0
-  --     ps' = ys!!0
-  --     zs' = ys!!1
-  -- displayHeader "diagrams/PP.png"
-  --               (diagSirGen "Hares and Lynxes"
-  --                              (zip ps zs)
-  --                              (zip ps' zs'))
+  let xs = map toList $ toRows $ tr $ solPp {- h0 l0 -} 100.0 50.0
+      ps = xs!!0
+      zs = xs!!1
+  let ys = map toList $ toRows $ tr $ solPp {- h0 l0 -} 100.0 25.0
+      ps' = ys!!0
+      zs' = ys!!1
+  displayHeader "diagrams/PP.png"
+                (diagSirGen "Hares and Lynxes"
+                               (zip ps zs)
+                               (zip ps' zs'))
 
   -- displayHeader "diagrams/LogBrownianPaths.png"
   --               (diag "Sample Paths for Log Brownian Motion"
   --                (map (zip [0..]) sims))
 
-  displayHeader "diagrams/StochPathsA.png"
-                (diag "Sample Paths for Stochastic LV"
-                 [zip [0..] (pss!!0), zip [0..] (zss!!0)])
+  -- displayHeader "diagrams/StochPathsA.png"
+  --               (diag "Sample Paths for Stochastic LV"
+  --                [zip [0..] (pss!!0), zip [0..] (zss!!0)])
 
   putStrLn "Hello"

@@ -91,20 +91,22 @@ bi_object_PP <- libbi(client="sample", model=PPInfer, obs = synthetic_dataset_PP
 bi_object_PP$run(add_options = list(
                      "end-time" = endTime,
                      noutputs = endTime,
-                     nsamples = 2000,
+                     nsamples = 4000,
                      nparticles = 128,
                      seed=42,
                      nthreads = 1),
-                 verbose = TRUE,
+                 ## verbose = TRUE,
                  stdoutput_file_name = tempfile(pattern="pmmhoutput", fileext=".txt"))
 
 bi_file_summary(bi_object_PP$result$output_file_name)
 
 mu <- bi_read(bi_object_PP, "mu")$value
-g1 <- qplot(x = mu, y = ..density.., geom = "histogram") + xlab(expression(mu))
+g1 <- qplot(x = mu[2001:4000], y = ..density.., geom = "histogram") + xlab(expression(mu))
 sigma <- bi_read(bi_object_PP, "sigma")$value
-g2 <- qplot(x = sigma, y = ..density.., geom = "histogram") + xlab(expression(sigma))
-grid.arrange(g1, g2)
+g2 <- qplot(x = sigma[2001:4000], y = ..density.., geom = "histogram") + xlab(expression(sigma))
+g3 <- grid.arrange(g1, g2)
+ggsave(plot=g3,filename="diagrams/LvPosterior.png",width=4,height=3)
+
 
 df2 <- data.frame(hareActs = rdata_PP$P$value,
                   hareObs  = rdata_PP$P_obs$value)

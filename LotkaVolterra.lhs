@@ -41,9 +41,13 @@ epidemiological model are taken to be Ornstein-Uhlenbeck processes
 of the model, something we wish to avoid in an example such as this).
 
 @Andrieu2010 propose a method to estimate the parameters of such
-models and the domain specific probabilistic language
-[LibBi](http://libbi.org/) (@Murray) can be used to apply this (and
-other inference methods).
+models (Particle Marginal Metropolis Hastings aka PMMH) and the domain
+specific probabilistic language [LibBi](http://libbi.org/) (@Murray)
+can be used to apply this (and other inference methods).
+
+For the sake of simplicity, in this blog post, we only model one
+parameter as being unknown and undergoing Brownian motion. A future
+blog post will consider more sophisticated scenarios.
 
 A Dynamical System Aside
 ========================
@@ -245,7 +249,13 @@ where $Z \sim {\mathcal{N}}(0,1)$.
 > logBM initRho sigma n m seed =
 >   evalState (logBMM initRho sigma n m) (pureMT $ fromIntegral seed)
 
+We can see the further we go into the future the less certain we are
+about the value of the parameter.
+
 ![](diagrams/LogBrownianPaths.png)
+
+Using this we can simulate the whole dynamical system which is now a
+stochastic process.
 
 > f1, f2 :: Double -> Double -> Double ->
 >           Double -> Double ->
@@ -283,6 +293,44 @@ where $Z \sim {\mathcal{N}}(0,1)$.
 >            [(Double, Double, Double)]
 > eulerEx stateInit sigma n m seed =
 >   evalState (euler stateInit sigma k1 b d k2 c n m) (pureMT $ fromIntegral seed)
+
+We see that the populations become noisier the further into the future
+we go.
+
+![](diagrams/StochPaths.png)
+
+Notice that the second order effects of the system are now to some
+extent captured by the fact that the growth rate of Hares can
+drift. In our simulation, this is demonstrated by our decreasing lack
+of knowledge the further we look into the future.
+
+Inference
+=========
+
+Now let us infer the growth rate using PMMH. Here's the model
+expressed in LibBi.
+
+~~~~{.CPP include="PPInfer.bi"}
+~~~~
+
+Let's look at the posteriors of the hyper-parameters for the Hare
+growth parameter.
+
+![](diagrams/LvPosterior.png)
+
+The estimate for $\mu$ is pretty decent. For our generated data,
+$\sigma =0$ and given our observations are quite noisy maybe the
+estimate for this is not too bad also.
+
+Appendix: The R Driving Code
+============================
+
+All code including the R below can be downloaded from
+[github](https://github.com/idontgetoutmuch/RandomWalks) but make sure
+you use the *straight-libbi* branch and *not* master.
+
+~~~~{.CPP include="PZ.R"}
+~~~~
 
 Bibliography
 ============

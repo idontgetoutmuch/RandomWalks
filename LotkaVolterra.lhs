@@ -13,10 +13,10 @@ In the 1920s, @doi:10.1021/j150111a004 and @Volterra1926 developed a
 model of a very simple predator-prey ecosystem.
 
 $$
-\begin{eqnarray}
+\begin{aligned}
 \frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1  - c_1 N_1 N_2 \label{eq2a} \\
 \frac{\mathrm{d}N_2}{\mathrm{d}t} & = & c_2 N_1 N_2 - \rho_2 N2 \label{eq2b}
-\end{eqnarray}
+\end{aligned}
 $$
 
 Although simple, it turns out that the Canadian lynx and showshoe hare
@@ -58,10 +58,10 @@ as a good model of predator–prey interaction. Let us modify this to
 include carrying capacities for the populations of both species.
 
 $$
-\begin{eqnarray}
+\begin{aligned}
 \frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1 \bigg(1 - \frac{N_1}{K_1}\bigg) - c_1 N_1 N_2 \\
 \frac{\mathrm{d}N_2}{\mathrm{d}t} & = & -\rho_2 N_2 \bigg(1 + \frac{N_2}{K_2}\bigg) + c_2 N_1 N_2
-\end{eqnarray}
+\end{aligned}
 $$
 
 Data Generation with LibBi
@@ -209,11 +209,11 @@ are about it. In order to ensure that this parameter remains positive,
 let's model the log of it to be Brownian motion.
 
 $$
-\begin{eqnarray}
+\begin{aligned}
 \frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1 \bigg(1 - \frac{N_1}{K_1}\bigg) - c_1 N_1 N_2 \\
 \frac{\mathrm{d}N_2}{\mathrm{d}t} & = & -\rho_2 N_2 \bigg(1 + \frac{N_2}{K_2}\bigg) + c_2 N_1 N_2 \\
 \mathrm{d} \rho_1 & = & \rho_1 \sigma_{\rho_1} \mathrm{d}W_t
-\end{eqnarray}
+\end{aligned}
 $$
 
 where the final equation is a stochastic differential equation with

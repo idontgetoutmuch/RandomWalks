@@ -82,6 +82,7 @@ Haskell Preamble
 > {-# LANGUAGE MultiParamTypeClasses        #-}
 > {-# LANGUAGE TypeFamilies                 #-}
 > {-# LANGUAGE ScopedTypeVariables          #-}
+> {-# LANGUAGE ExplicitForAll               #-}
 > {-# LANGUAGE DataKinds                    #-}
 
 
@@ -91,7 +92,6 @@ Haskell Preamble
 > {-# LANGUAGE TypeFamilies                 #-}
 > {-# LANGUAGE BangPatterns                 #-}
 > {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
-> {-# LANGUAGE ScopedTypeVariables          #-}
 > {-# LANGUAGE TemplateHaskell              #-}
 > {-# LANGUAGE DataKinds                    #-}
 > {-# LANGUAGE DeriveGeneric                #-}
@@ -184,9 +184,7 @@ symmetric about the actuals.
 > pendulumSamples :: [(PendulumState, PendulumObs)]
 > pendulumSamples = evalState (ML.unfoldrM (pendulumSample bigQ bigR) m0) (pureMT 17)
 
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/PendulumObs.png") 600 600 (translationX 0.0))
-```
+![](diagrams/PendulumObs.B.png)
 
 But if we work in a region in which linearity breaks down then the
 observations are no longer symmetrical about the actuals.
@@ -211,9 +209,7 @@ observations are no longer symmetrical about the actuals.
 > pendulumSamples' :: [(PendulumState, PendulumObs)]
 > pendulumSamples' = evalState (ML.unfoldrM (pendulumSample bigQ' bigR') m0') (pureMT 17)
 
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/PendulumObs1.png") 600 600 (translationX 0.0))
-```
+![](diagrams/PendulumObs1.B.png)
 
 Filtering
 =========
@@ -223,7 +219,7 @@ reader can either consult @Srkk:2013:BFS:2534502 or wait for a future
 blog post on the subject.
 
 > nParticles :: Int
-> nParticles = 50
+> nParticles = 500
 
 The usual Bayesian update step.
 
@@ -353,9 +349,7 @@ and extract the estimated position from the filter.
 > testFiltering nTimeSteps = map ((/ (fromIntegral nParticles)). sum . V.map x1)
 >                                (runFilter nTimeSteps)
 
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/PendulumFitted.png") 600 600 (translationX 0.0))
-```
+![](diagrams/PendulumFitted.B.png)
 
 Smoothing
 =========
@@ -498,7 +492,17 @@ distribution)
 >   let ys = filterEstss nTimeSteps
 >   ix <- sample $ uniform 0 (nParticles - 1)
 >   let xn = (V.head ys) V.! ix
->   runWriterT $ V.foldM oneSmoothingStep xn ys
+>   runWriterT $ V.foldM oneSmoothingStep xn (V.tail ys)
+
+> oneSmoothingPath' :: (MonadRandom m, Show a) =>
+>              (Int -> V.Vector (Particles a)) ->
+>              (a -> Particles a -> WriterT (Particles a) m a) ->
+>              Int -> WriterT (Particles a) m a
+> oneSmoothingPath' filterEstss oneSmoothingStep nTimeSteps = do
+>   let ys = filterEstss nTimeSteps
+>   ix <- lift $ sample $ uniform 0 (nParticles - 1)
+>   let xn = (V.head ys) V.! ix
+>   V.foldM oneSmoothingStep xn (V.tail ys)
 
 Of course we need to run through the filtering distributions starting
 at $i = N$
@@ -520,13 +524,11 @@ at $i = N$
 
 By eye we can see we get a better fit
 
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/PendulumSmoothed20.png") 600 600 (translationX 0.0))
-```
+![](diagrams/PendulumSmoothed20.B.png)
 
 and calculating the mean square error for filtering gives
-$6.47\times10^{-3}$ against the mean square error for smoothing of
-$1.82\times10^{-3}$; this confirms the fit really is better as one
+$1.87\times10^{-2}$ against the mean square error for smoothing of
+$9.52\times10^{-3}$; this confirms the fit really is better as one
 would hope.
 
 Unknown Gravity
@@ -717,9 +719,7 @@ and extract the estimated parameter from the filter.
 > testFilteringG :: Int -> [Double]
 > testFilteringG n = map ((/ (fromIntegral nParticles)). sum . V.map gx3) (runFilterG n)
 
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/PendulumG.A.png") 600 600 (translationX 0.0))
-```
+![](diagrams/PendulumG.B.png)
 
 Again we need to run through the filtering distributions starting at
 $i = N$
@@ -729,27 +729,34 @@ $i = N$
 
 > testSmoothingG :: Int -> Int -> ([Double], [Double], [Double])
 > testSmoothingG m n = (\(x, y, z) -> (V.toList x, V.toList y, V.toList z))  $
->                      evalState action (pureMT 23)
+>                      mkMeans $
+>                      chunks
 >   where
->     action = do
->       xss <- V.replicateM n $
->              snd <$> (oneSmoothingPath filterGEstss (oneSmoothingStep stateUpdateG (weight hG bigQg)) m)
->       let yss = V.fromList $ map V.fromList $
->                 transpose $
->                 V.toList $ V.map (V.toList) $
->                 xss
->       return ( V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx1) yss
->              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx2) yss
->              , V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx3) yss
->              )
+>
+>     chunks =
+>       V.fromList $ map V.fromList $
+>       transpose $
+>       V.toList $ V.map (V.toList) $
+>       chunksOf m $
+>       snd $ evalState (runWriterT action) (pureMT 23)
+>
+>     mkMeans yss = (
+>       V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx1) yss,
+>       V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx2) yss,
+>       V.map (/ (fromIntegral n)) $ V.map V.sum $ V.map (V.map gx3) yss
+>       )
+>
+>     action =
+>       V.replicateM n $
+>       oneSmoothingPath' filterGEstss
+>                         (oneSmoothingStep stateUpdateG (weight hG bigQg))
+>                         m
 
 Again by eye we get a better fit but note that we are using the
 samples in which the state update is noisy as well as the observation
 so we don't expect to get a very good fit.
 
-```{.dia height='600'}
-dia = image (DImage (ImageRef "diagrams/PendulumSmoothedG.A.png") 600 600 (translationX 0.0))
-```
+![](diagrams/PendulumSmoothedG.B.png)
 
 Notes
 =====
@@ -783,6 +790,17 @@ post.
 >       | u <= l    = l
 >       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
 >       where k = l + (u - l) `shiftR` 1
+
+Vector Helpers
+--------------
+
+> chunksOf :: Int -> V.Vector a -> V.Vector (V.Vector a)
+> chunksOf n xs = ys
+>   where
+>     l = V.length xs
+>     m  = 1 + (l - 1) `div` n
+>     ys = V.unfoldrN m (\us -> Just (V.take n us, V.drop n us)) xs
+
 
 Bibliography
 ============

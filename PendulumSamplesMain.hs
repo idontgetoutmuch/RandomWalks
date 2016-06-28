@@ -16,6 +16,7 @@ import System.IO.Unsafe
 import PendulumSamples
 import Numeric.LinearAlgebra.Static
 
+import qualified Diagrams.Backend.Rasterific as R
 
 
 denv :: DEnv Double
@@ -103,45 +104,102 @@ chartEstimated title acts obs ests = toRenderable layout
            $ def
 
 
+diagFittedG :: String ->
+               Double ->
+               [(Double, Double)] ->
+               [(Double, Double)] ->
+               Diagram Cairo
+diagFittedG t r l xs =
+  fst $ runBackend denv (render (chartFittedG t r l xs) (600, 500))
+
+chartFittedG :: String ->
+                Double ->
+               [(Double, Double)] ->
+               [(Double, Double)] ->
+               Renderable ()
+chartFittedG title range acts obs = toRenderable layout
+  where
+
+    actuals = plot_lines_values .~ [acts]
+            $ plot_lines_style  . line_color .~ opaque red
+            $ plot_lines_title .~ "Actual Gravity"
+            $ plot_lines_style  . line_width .~ 1.0
+            $ def
+
+    measurements = plot_lines_values .~ [obs]
+                 $ plot_lines_style  . line_color .~ opaque blue
+                 $ plot_lines_title .~ "Inferred Gravity"
+                 $ plot_lines_style  . line_width .~ 1.0
+                 $ def
+
+    layout = layout_title .~ title
+           $ layout_plots .~ [toPlot actuals, toPlot measurements]
+           $ layout_y_axis . laxis_title .~ "Acceleration"
+           $ layout_y_axis . laxis_override .~ axisGridHide
+           $ layout_y_axis . laxis_generate .~ scaledAxis def (0.0, range)
+           $ layout_x_axis . laxis_title .~ "Time"
+           $ layout_x_axis . laxis_override .~ axisGridHide
+           $ layout_grid_last .~ False
+           $ def
+
 displayHeader :: FilePath -> Diagram B -> IO ()
 displayHeader fn =
   mainRender ( DiagramOpts (Just 900) (Just 700) fn
              , DiagramLoopOpts False Nothing 0
              )
 
+-- dia :: Diagram B
+-- dia :: QDiagram Cairo V2 Double Any
+dia :: QDiagram R.Rasterific V2 Double Any
+dia = image (DImage (ImageRef "diagrams/PendulumObs.B.png")
+                    600 600 (translationX (0.0 :: Double)))
+
 main :: IO ()
 main = do
-  -- let xs = take 500 $ pendulumSamples
-  --     states = map fst $ map headTail $ map fst xs
-  --     obs    = map fst $ map headTail $ map snd xs
-  -- displayHeader "diagrams/PendulumObs.png"
-  --               (diagFitted "Pendulum" 0.04 (zip [0,1..] states) (zip [0,1..] obs))
+  let xs = take 500 $ pendulumSamples
+      states = map fst $ map headTail $ map fst xs
+      obs    = map fst $ map headTail $ map snd xs
+  displayHeader "diagrams/PendulumObs.B.png"
+                (diagFitted "Pendulum" 0.04 (zip [0,1..] states) (zip [0,1..] obs))
+
   let xs = take 500 $ pendulumSamples'
       states = map fst $ map headTail $ map fst xs
       obs    = map fst $ map headTail $ map snd xs
-  -- displayHeader "diagrams/PendulumObs1.png"
-  --               (diagFitted "Pendulum" 2.5 (zip [0,1..] states) (zip [0,1..] obs))
-  -- let x1s = testFiltering 500
-  -- displayHeader "diagrams/PendulumFitted.png"
-  --               (diagEstimated "Fitted Pendulum"
-  --                              (zip [0,1..] states)
-  --                              (zip [0,1..] obs)
-  --                              (zip [0,1..] x1s))
-  -- let x1ss = reverse $ testSmoothing 500 20
-  -- displayHeader "diagrams/PendulumSmoothed20.png"
-  --               (diagEstimated "Smoothed Pendulum"
-  --                              (zip [0,1..] states)
-  --                              (zip [0,1..] obs)
-  --                              (zip [0,1..] x1ss))
-  let x3s = testFilteringG 1000
-  displayHeader "diagrams/PendulumG.png"
-                (diagFitted "Gravity" 12.0 (zip [0,1..] (replicate 1000 9.81)) (zip [0,1..] x3s))
+  displayHeader "diagrams/PendulumObs1.B.png"
+                (diagFitted "Pendulum" 2.5 (zip [0,1..] states) (zip [0,1..] obs))
+
+
+  let x1s = testFiltering 500
+  putStrLn $ show $ last x1s
+  putStrLn $ show $ sum $ zipWith (\x y -> (x - y)^2) states x1s
+  displayHeader "diagrams/PendulumFitted.B.png"
+                (diagEstimated "Fitted Pendulum"
+                               (zip [0,1..] states)
+                               (zip [0,1..] obs)
+                               (zip [0,1..] x1s))
+
+  let x1ss = reverse $ testSmoothing 500 20
+  putStrLn $ show $ last x1ss
+  putStrLn $ show $ sum $ zipWith (\x y -> (x - y)^2) states x1ss
+  displayHeader "diagrams/PendulumSmoothed20.B.png"
+                (diagEstimated "Smoothed Pendulum"
+                               (zip [0,1..] states)
+                               (zip [0,1..] obs)
+                               (zip [0,1..] x1ss))
+
+  let x3s = testFilteringG 500
+  putStrLn $ show $ last x3s
+  displayHeader "diagrams/PendulumG.B.png"
+                (diagFittedG "Gravity" 12.0 (zip [0,1..] (replicate 500 9.81)) (zip [0,1..] x3s))
+
   let us = testSmoothingG 500 20
       x1s = reverse $ (\(v, _, _) -> v) us
       x3s = reverse $ (\(_, _, v) -> v) us
-  displayHeader "diagrams/PendulumSmoothedG20.png"
-                (diagFitted "Smoothed Gravity" 12.0 (zip [0,1..] (replicate 500 9.81)) (zip [0,1..] x3s))
-  displayHeader "diagrams/PendulumSmoothedG1X20.png"
+  putStrLn $ show $ last x3s
+  displayHeader "diagrams/PendulumSmoothedG.B.png"
+                (diagFittedG "Smoothed Gravity" 12.0 (zip [0,1..] (replicate 500 9.81)) (zip [0,1..] x3s))
+
+  displayHeader "diagrams/PendulumSmoothedG1X20.B.png"
                 (diagEstimated "Smoothed Pendulum"
                                (zip [0,1..] states)
                                (zip [0,1..] obs)

@@ -107,7 +107,9 @@ Haskell Preamble
 >   ( simpleSamples
 >   , carSamples
 >   , testCar
+>   , nSimples
 >   , testSimple
+>   , testSimple1
 >   ) where
 
 > import Data.Random.Source.PureMT
@@ -512,13 +514,16 @@ Again create a prior.
 
 Now we can run the smoother.
 
+> nSimples :: Int
+> nSimples = 200
+
 > smootherSimple :: StateT PureMT IO (ArraySmoothing Double, [ArraySmoothing Double])
 > smootherSimple = runWriterT $ do
 >   xHat1 <- lift initSimple
 >   foldM (singleStep f1 g1 ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1^2])
 >                           ((1 H.>< 1) [bigH1]) (H.trustSym $ (1 H.>< 1) [bigR1^2]))
 >         xHat1
->         (take 20 $ map H.fromList $ map return . map snd $ tail simpleSamples)
+>         (take nSimples $ map H.fromList $ map return . map snd $ tail simpleSamples)
 
 > f1 :: Double -> H.Vector Double
 > f1 a = H.fromList [a]
@@ -529,13 +534,13 @@ Now we can run the smoother.
 And finally we can look at the paths not just the means of the
 marginal distributions at the latest observation time.
 
-> testSimple :: IO [[Double]]
+> testSimple :: IO [[[Double]]]
 > testSimple = do
 >   states <- snd <$> evalStateT smootherSimple (pureMT 24)
->   let path :: Int -> IO (Repa.Array Repa.U DIM1 Double)
->       path i = computeP $ Repa.slice (last states) (Any :. i :. All)
->   paths <- mapM path [0..n - 1]
->   return $ map Repa.toList paths
+>   let path :: Int -> Int -> IO (Repa.Array Repa.U DIM1 Double)
+>       path i j = computeP $ Repa.slice (states!!j) (Any :. i :. All)
+>   pathss <- mapM (\i -> mapM (flip path i) [0..n - 1]) [0..4]
+>   return $ map (\paths ->map Repa.toList paths) pathss
 
 ```{.dia height='600'}
 dia = image (DImage (ImageRef "diagrams/Smooth.png") 600 600 (translationX 0.0))
@@ -544,6 +549,36 @@ dia = image (DImage (ImageRef "diagrams/Smooth.png") 600 600 (translationX 0.0))
 We can see that at some point in the past all the current particles
 have one ancestor. The marginals of the smoothing distribution (at
 some point in the past) have collapsed on to one particle.
+
+> testSimple1 :: IO [[Double]]
+> testSimple1 = do
+>   states <- snd <$> evalStateT smootherSimple (pureMT 24)
+>   let ijxs = map extent states
+>       f ijx = let Z :. i :. j = ijx in (i,j)
+>       ijs = map f ijxs
+>   let prePss :: [Repa.Array Repa.D DIM1 Double]
+>       prePss :: [Repa.Array Repa.D DIM1 Double] =
+>         map (\(_i, j) -> Repa.slice (states!!(j - 1)) (Any :. j - 1)) ijs
+>   pss :: [Repa.Array Repa.U DIM1 Double] <- mapM computeP prePss
+>   return $ map Repa.toList pss
+
+> testCar1 :: IO ([Double], [Double])
+> testCar1 = do
+>   states <- snd <$> evalStateT smootherCar (pureMT 24)
+>   let xs :: [Repa.Array Repa.D DIM2 Double]
+>       xs = map (Repa.map xPos) states
+>   sumXs :: [Repa.Array Repa.U DIM1 Double] <- mapM Repa.sumP (map Repa.transpose xs)
+>   let ixs = map extent sumXs
+>       sumLastXs = map (* (recip $ fromIntegral n)) $
+>                   zipWith (Repa.!) sumXs (map (\(Z :. x) -> Z :. (x - 1)) ixs)
+>   let ys :: [Repa.Array Repa.D DIM2 Double]
+>       ys = map (Repa.map yPos) states
+>   sumYs :: [Repa.Array Repa.U DIM1 Double] <- mapM Repa.sumP (map Repa.transpose ys)
+>   let ixsY = map extent sumYs
+>       sumLastYs = map (* (recip $ fromIntegral n)) $
+>                   zipWith (Repa.!) sumYs (map (\(Z :. x) -> Z :. (x - 1)) ixsY)
+>   return (sumLastXs, sumLastYs)
+
 
 Notes
 =====

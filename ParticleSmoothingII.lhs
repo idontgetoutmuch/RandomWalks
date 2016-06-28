@@ -86,12 +86,12 @@ $$
 Haskell Preamble
 ----------------
 
-> {-# OPTIONS_GHC -Wall                     #-}
-> {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
-> {-# OPTIONS_GHC -fno-warn-type-defaults   #-}
-> {-# OPTIONS_GHC -fno-warn-unused-do-bind  #-}
-> {-# OPTIONS_GHC -fno-warn-missing-methods #-}
-> {-# OPTIONS_GHC -fno-warn-orphans         #-}
+{-# OPTIONS_GHC -Wall                     #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
+{-# OPTIONS_GHC -fno-warn-type-defaults   #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind  #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods #-}
+{-# OPTIONS_GHC -fno-warn-orphans         #-}
 
 
 > {-# LANGUAGE FlexibleInstances            #-}
@@ -102,6 +102,7 @@ Haskell Preamble
 > {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
 > {-# LANGUAGE ScopedTypeVariables          #-}
 > {-# LANGUAGE TemplateHaskell              #-}
+> {-# LANGUAGE DataKinds                    #-}
 
 > module ParticleSmoothingII
 >   ( simpleSamples
@@ -110,6 +111,10 @@ Haskell Preamble
 >   , nSimples
 >   , testSimple
 >   , testSimple1
+>   , testSimple2
+>   , smoothBackwards
+>   , testSmoothSimple
+>   , testSmoothCar
 >   ) where
 
 > import Data.Random.Source.PureMT
@@ -118,6 +123,8 @@ Haskell Preamble
 > import Control.Monad.State
 > import Control.Monad.Writer hiding ( Any, All )
 > import qualified Numeric.LinearAlgebra.HMatrix as H
+> import Numeric.LinearAlgebra.HMatrix ( (#>) )
+> import qualified Numeric.LinearAlgebra.Static as S
 > import Foreign.Storable ( Storable )
 > import Data.Maybe ( fromJust )
 > import Data.Bits ( shiftR )
@@ -134,10 +141,16 @@ Haskell Preamble
 > import qualified Control.Monad.Loops as ML
 
 > import PrettyPrint ()
+> import Text.PrettyPrint ( render )
 > import Text.PrettyPrint.HughesPJClass ( Pretty, pPrint )
 
 > import Data.Vector.Unboxed.Deriving
+> import Foreign.Storable.Record as Store
+> import Foreign.Storable ( Storable (..) )
 
+> import Data.List ( scanl' )
+
+> import Debug.Trace
 
 
 Some Theory
@@ -336,7 +349,7 @@ dimensions.
 > bigP0 = H.trustSym $ H.ident 4
 
 > n :: Int
-> n = 23
+> n = 5
 
 With these we generate hidden and observable sample path.
 
@@ -396,15 +409,16 @@ particles at each time step.
 >       weights = map (normalPdf y bigR) $
 >                 map (bigH H.#>) xTildeNextH
 >       vs = runST (create >>= (asGenST $ \gen -> uniformVector gen n))
->       cumSumWeights = V.scanl (+) 0 (V.fromList weights)
 >       totWeight = sum weights
->       normWeights = V.map (/ totWeight) $ V.tail cumSumWeights
->       js = indices normWeights vs
+>       normWeights = V.map (/ totWeight) (V.fromList weights)
+>       cumSumWeights = V.tail $ V.scanl (+) 0 normWeights
+>       js = indices cumSumWeights vs
 >       xNewV = V.map (\j -> Repa.transpose $
 >                            Repa.reshape (Z :. (1 :: Int) :. jx + 1) $
 >                            slice xTilde (Any :. j :. All)) js
 >       xNewR = Repa.transpose $ V.foldr Repa.append (xNewV V.! 0) (V.tail xNewV)
->   tell[(x, normWeights)]
+>   tell [(x, normWeights)]
+>   -- trace ("\nNormalised weights: " ++ show normWeights) $ return ()
 >   computeP xNewR
 
 
@@ -415,6 +429,7 @@ The state for the car is a 4-tuple.
 >                                  , _xSpd :: a
 >                                  , _ySpd :: a
 >                                  }
+>   deriving Show
 
 We initialize the smoother from some prior distribution.
 
@@ -434,18 +449,21 @@ We initialize the smoother from some prior distribution.
 
 Now we can run the smoother.
 
+> nCarPositions :: Int
+> nCarPositions = 4
+
 > smootherCar :: StateT PureMT IO
 >             (ArraySmoothing (SystemState Double)
 >             , [(ArraySmoothing (SystemState Double), V.Vector Double)])
 > smootherCar = runWriterT $ do
 >   xHat1 <- lift initCar
->   foldM (singleStep f g bigA bigQ bigH bigR) xHat1 (take 100 $ map snd $ tail carSamples)
+>   foldM (singleStep f h bigA bigQ bigH bigR) xHat1 (take nCarPositions $ map snd $ tail carSamples)
 
 > f :: SystemState Double -> H.Vector Double
 > f (SystemState a b c d) = H.fromList [a, b, c, d]
 
-> g :: H.Vector Double -> SystemState Double
-> g = (\[a,b,c,d] -> (SystemState a b c d)) . H.toList
+> h :: H.Vector Double -> SystemState Double
+> h = (\[a,b,c,d] -> (SystemState a b c d)) . H.toList
 
 And create inferred positions for the car which we then plot.
 
@@ -481,7 +499,7 @@ Gaussian model.
 
 > bigA1, bigQ1, bigR1, bigH1 :: Double
 > bigA1 = 0.5
-> bigQ1 = 0.1
+> bigQ1 = 0.01
 > bigR1 = 0.1
 > bigH1 = 1.0
 
@@ -516,7 +534,7 @@ Again create a prior.
 Now we can run the smoother.
 
 > nSimples :: Int
-> nSimples = 200
+> nSimples = 7
 
 > smootherSimple :: StateT PureMT IO (ArraySmoothing Double, [(ArraySmoothing Double, V.Vector Double)])
 > smootherSimple = runWriterT $ do
@@ -563,61 +581,266 @@ some point in the past) have collapsed on to one particle.
 >   pss :: [Repa.Array Repa.U DIM1 Double] <- mapM computeP prePss
 >   return $ map Repa.toList pss
 
-> smoothOneStep :: (Monad (t m), MonadTrans t) =>
->                  H.Matrix Double ->
->                  [Double] ->
->                  [H.Vector Double] ->
->                  [H.Vector Double] ->
->                  [Double] ->
->                  t m [Double]
-> smoothOneStep bigA filteringWtCurrs particleCurrs particleSuccs wSuccs = do
->   let normWeights :: H.Vector Double -> [Double]
->       normWeights particleSucc = map (normalPdf particleSucc bigR) $
->                                  map (bigA H.#>) particleCurrs
->       normTerm :: H.Vector Double -> Double
->       normTerm particleSucc = sum $ zipWith (*) filteringWtCurrs (normWeights particleSucc)
->       normTerms :: [Double]
->       normTerms = map normTerm particleSuccs
->       indWeights :: H.Vector Double -> [Double]
->       indWeights particleCurr = map (\x -> normalPdf x bigR (bigA H.#> particleCurr))
->                                     particleSuccs
->       smoothWeight :: Double -> H.Vector Double -> Double
->       smoothWeight filteringWtCurr particleCurr =
->         filteringWtCurr * (sum (zipWith (/) (zipWith (*) wSuccs (indWeights particleCurr)) normTerms))
->       wCurrs :: [Double]
->       wCurrs = zipWith smoothWeight filteringWtCurrs particleCurrs
->   return wCurrs
-
-> smoothBackwards :: IO ([[Double]], [V.Vector Double])
-> smoothBackwards = do
+> testSimple2 = do
 >   weightParticles <- snd <$> evalStateT smootherSimple (pureMT 24)
->   let weights = map snd weightParticles
+>   let weights :: [V.Vector Double]
+>       weights = map snd weightParticles
+>       histories = map fst weightParticles
+>   let ijxs = map extent histories
+>       ijs = map (\ijx -> let Z :. i :. j = ijx in (i,j)) ijxs
+>       prePss = map (\(_i, j) -> Repa.slice (histories!!(j - 1)) (Any :. j - 1)) ijs
+>   pss :: [Repa.Array Repa.U DIM1 Double] <- mapM computeP prePss
+>   return (map Repa.toList pss, map V.toList weights)
+
+
+> (.+), (.*), (.-) :: Num a => [a] -> [a] -> [a]
+> (.+) = zipWith (+)
+> (.*) = zipWith (*)
+> (.-) = zipWith (-)
+
+> (./) :: Fractional a => [a] -> [a] -> [a]
+> (./) = zipWith (/)
+
+> smoothOneStep :: H.Matrix Double ->
+>                  H.Herm Double ->
+>                  [Double] ->
+>                  ([Double], [H.Vector Double], [H.Vector Double]) ->
+>                  [Double]
+> smoothOneStep bigA bigQ wSuccs (filteringWtCurrs, particleCurrs, particleSuccs) =
+>   trace ("\nnormWeights = " ++ show normWeightsList ++
+>          "\nlog normWeights = " ++ show logNormWeightsList ++
+>          "\nnormTerms = " ++ show normTerms ++
+>          "\nIndividual weights = " ++ show indWeightsList) $
+>   --        "\nCurrent un-normalised weight = " ++ show wCurrs' ++
+>   --        "\nCurrent weight = " ++ show wCurrs) $
+>   -- trace ("\nNext weights = " ++ show wSuccs ++
+>   --        "\nFiltering weights = " ++ show filteringWtCurrs ++
+>   --        "\nCurrent weight = " ++ show wCurrs) $
+>   wCurrs
+>   where
+>     normWeights :: H.Vector Double -> [Double]
+>     normWeights particleSucc = map (normalPdf particleSucc bigQ) $
+>                                map (bigA #>) particleCurrs
+>     logNormWeights particleSucc = map (logPdf (Normal particleSucc bigQ)) $
+>                                   map (bigA #>) particleCurrs
+>     normWeightsList = map normWeights particleSuccs
+>     logNormWeightsList = map logNormWeights particleSuccs
+>     normTerm :: H.Vector Double -> Double
+>     normTerm particleSucc = sum $ filteringWtCurrs .* (normWeights particleSucc)
+>     normTerms :: [Double]
+>     normTerms = map normTerm particleSuccs
+>     indWeights :: H.Vector Double -> [Double]
+>     indWeights particleCurr = map (\x -> normalPdf x bigQ (bigA #> particleCurr))
+>                                   particleSuccs
+>     indWeightsList = map indWeights particleCurrs
+>     unSmoothWeight :: Double -> H.Vector Double -> Double
+>     unSmoothWeight filteringWtCurr particleCurr =
+>       filteringWtCurr * (sum (wSuccs .* (indWeights particleCurr)))
+>     smoothWeight :: Double -> H.Vector Double -> Double
+>     smoothWeight filteringWtCurr particleCurr =
+>       filteringWtCurr * (sum (wSuccs .* (indWeights particleCurr) ./ normTerms))
+>     wCurrs :: [Double]
+>     wCurrs = zipWith smoothWeight filteringWtCurrs particleCurrs
+>     wCurrs' :: [Double]
+>     wCurrs' = zipWith unSmoothWeight filteringWtCurrs particleCurrs
+
+Let's run the filter with
+
+    [ghci]
+    n
+
+> foo = do
+>   weightParticles <- snd <$> evalStateT smootherSimple (pureMT 24)
+>   let weights :: [V.Vector Double]
+>       weights = map snd weightParticles
+>       particleHistories = map fst weightParticles
+>   return (particleHistories, weights)
+
+> baz = do
+>   (histories, pss, weights) <- bar
+>   mapM_ putStrLn $ map show weights
+>   mapM_ putStrLn $ map render $ map pPrint histories
+>   mapM_ putStrLn $ map render $ map pPrint pss
+
+> bar = do
+>   (histories, weights) <- foo
+>   let ijxs = map extent histories
+>       ijs = map (\ijx -> let Z :. i :. j = ijx in (i,j)) ijxs
+>       prePss = map (\(_i, j) -> Repa.slice (histories!!(j - 1)) (Any :. j - 1)) ijs
+>   pss :: [Repa.Array Repa.U DIM1 Double] <- mapM computeP prePss
+>   return (histories, pss, weights)
+
+    [ghci]
+    baz
+
+> urk = do
+>   (_, pss, weights) <- bar
+>   let revWeights = reverse weights
+>       initSmoothingWeights = V.toList $ head revWeights
+>       filteringWeights1 = V.toList $ head $ tail revWeights
+>       filteringWeights2 = V.toList $ head $ tail $ tail revWeights
+>       zs :: [[H.Vector Double]]
+>       zs = map (map (\x -> H.fromList [x]) . Repa.toList) $ reverse pss
+>       eek1 = smoothOneStep ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1]) initSmoothingWeights (filteringWeights1, head $ tail zs, head zs)
+>       eek2 = smoothOneStep ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1]) eek1 (filteringWeights2, head $ tail $ tail zs, head $ tail zs)
+>   return [eek1, eek2]
+
+    [ghci]
+    urk >>= mapM_ (putStrLn . render. pPrint)
+
+> smoothBackwards ::
+>   forall a . (U.Unbox a, Show a) =>
+>   (a -> H.Vector Double) ->
+>   H.Matrix Double ->
+>   H.Herm Double ->
+>   (StateT PureMT IO (ArraySmoothing a, [(Repa.Array Repa.U DIM2 a, V.Vector Double)])) ->
+>   IO ([[a]], [[Double]])
+> smoothBackwards f bigA bigQ filter = do
+>   weightParticles <- snd <$> evalStateT filter (pureMT 24)
+>   let weights :: [V.Vector Double]
+>       weights = map snd weightParticles
 >       particleHistories = map fst weightParticles
 >   let ijxs = map extent particleHistories
->       f ijx = let Z :. i :. j = ijx in (i,j)
->       ijs = map f ijxs
->   let prePss :: [Repa.Array Repa.D DIM1 Double]
->       prePss :: [Repa.Array Repa.D DIM1 Double] =
->         map (\(_i, j) -> Repa.slice (particleHistories!!(j - 1)) (Any :. j - 1)) ijs
->   pss :: [Repa.Array Repa.U DIM1 Double] <- mapM computeP prePss
->   return $ (map Repa.toList pss, weights)
+>       ijs = map (\ijx -> let Z :. i :. j = ijx in (i,j)) ijxs
+>   -- trace (show ijs) $ return ()
+>   let prePss :: [Repa.Array Repa.D DIM1 a]
+>       prePss = map (\(_i, j) -> Repa.slice (particleHistories!!(j - 1)) (Any :. j - 1)) ijs
+>   pss :: [Repa.Array Repa.U DIM1 a] <- mapM computeP prePss
+>   let revWeights = reverse weights
+>       initSmoothingWeights = V.toList $ head revWeights
+>       tailFilteringWeights = map V.toList $ tail revWeights
+>       zs :: [[H.Vector Double]]
+>       zs = map (map f . Repa.toList) $ reverse pss
+>       xs :: [([Double], [H.Vector Double], [H.Vector Double])]
+>       xs = zip3 (tailFilteringWeights) zs (tail zs)
+>       smoothingWeights = scanl' (smoothOneStep bigA bigQ) initSmoothingWeights xs
+>   -- trace (show weights) $ return ()
+>   -- trace (show initSmoothingWeights) $ return ()
+>   return $ (map Repa.toList pss, smoothingWeights)
 
-> testCar1 :: IO ([Double], [Double])
-> testCar1 = do
->   states <- (map fst . snd) <$> evalStateT smootherCar (pureMT 24)
->   let xs :: [Repa.Array Repa.D DIM2 Double]
->       xs = map (Repa.map xPos) states
->   sumXs :: [Repa.Array Repa.U DIM1 Double] <- mapM Repa.sumP (map Repa.transpose xs)
->   let ixs = map extent sumXs
->       sumLastXs = map (* (recip $ fromIntegral n)) $
->                   zipWith (Repa.!) sumXs (map (\(Z :. x) -> Z :. (x - 1)) ixs)
->   let ys :: [Repa.Array Repa.D DIM2 Double]
->       ys = map (Repa.map yPos) states
->   sumYs :: [Repa.Array Repa.U DIM1 Double] <- mapM Repa.sumP (map Repa.transpose ys)
->   let ixsY = map extent sumYs
->       sumLastYs = map (* (recip $ fromIntegral n)) $
->                   zipWith (Repa.!) sumYs (map (\(Z :. x) -> Z :. (x - 1)) ixsY)
->   return (sumLastXs, sumLastYs)
+> testSmoothSimple :: IO ([[Double]], [[Double]])
+> testSmoothSimple = do
+>     smoothBackwards (\x -> H.fromList [x]) ((1 H.>< 1) [bigA1]) (H.trustSym $ (1 H.>< 1) [bigQ1]) smootherSimple
+
+> testSmoothCar :: IO ([[ Double]], [[Double]], [[Double]])
+> testSmoothCar = do
+>     (xyss, wss) <- smoothBackwards f bigA bigQ smootherCar
+>     -- trace (show xyss) $ return ()
+>     -- trace (show wss) $ return ()
+>     let xss = map (map xPos) xyss
+>     let yss = map (map yPos) xyss
+>     return (xss, yss, wss)
+
+> fooCar = do
+>   weightParticles <- snd <$> evalStateT smootherCar (pureMT 24)
+>   let weights :: [V.Vector Double]
+>       weights = map snd weightParticles
+>       particleHistories = map fst weightParticles
+>   return (particleHistories, weights)
+
+> barCar = do
+>   (histories, weights) <- fooCar
+>   let ijxs = map extent histories
+>       ijs = map (\ijx -> let Z :. i :. j = ijx in (i,j)) ijxs
+>       prePss = map (\(_i, j) -> Repa.slice (histories!!(j - 1)) (Any :. j - 1)) ijs
+>   pss :: [Repa.Array Repa.U DIM1 (SystemState Double)] <- mapM computeP prePss
+>   return (histories, pss, weights)
+
+> urkCar = do
+>   (_, pss, weights) <- barCar
+>   let revWeights = reverse weights
+>       initSmoothingWeights = V.toList $ head revWeights
+>       filteringWeights1 = V.toList $ head $ tail revWeights
+>       filteringWeights2 = V.toList $ head $ tail $ tail revWeights
+>       filteringWeights3 = V.toList $ head $ tail $ tail $ tail revWeights
+>       zs :: [[H.Vector Double]]
+>       zs = map (map f . Repa.toList) $ reverse pss
+>       eek1 = smoothOneStep bigA bigQ initSmoothingWeights (filteringWeights1, head $ tail zs, head zs)
+>       eek2 = smoothOneStep bigA bigQ eek1 (filteringWeights2, head $ tail $ tail zs, head $ tail zs)
+>       eek3 = smoothOneStep bigA bigQ eek2 (filteringWeights3, head $ tail $ tail $ tail zs, head $ tail $ tail zs)
+>   return [eek1, eek2, eek3]
+
+Pendulum
+========
+
+$$
+\frac{\mathrm{d}^2\alpha}{\mathrm{d}t^2} = -g\sin\alpha + w(t)
+$$
+
+$$
+\begin{bmatrix}
+x_{1,i} \\
+x_{2,i}
+\end{bmatrix}
+=
+\begin{bmatrix}
+x_{1,i-1} + x_{2,i-1}\Delta t \\
+x_{2,i-1} - g\sin x_{1,i-1}\Delta t
+\end{bmatrix}
++
+\mathbf{q}_{i-1}
+$$
+
+where $q_i \sim {\mathcal{N}}(0,Q)$
+
+$$
+Q
+=
+Q =
+\begin{bmatrix}
+\frac{q^c \Delta t^3}{3} & \frac{q^c \Delta t^2}{2} \\
+\frac{q^c \Delta t^2}{2} & {q^c \Delta t}
+\end{bmatrix}
+$$
+
+Assume that we can only measure the horizontal position of the
+pendulum so that
+
+$$
+y_i = \sin x_i + r_k
+$$
+
+where $r_i \sim {\mathcal{N}}(0,R)$.
+
+> deltaT' = 0.01
+> g  = 9.81
+> bigQ' :: H.Herm Double
+> bigQ' = H.trustSym $ (2 H.>< 2) bigQl'
+> qc1' = 0.01
+
+> bigQl' :: [Double]
+> bigQl' = [qc1' * deltaT'^3 / 3, qc1' * deltaT'^2 / 2,
+>           qc1' * deltaT'^2 / 2,       qc1' * deltaT']
+
+> bigR' :: H.Matrix Double
+> bigR'  = (1 H.>< 1) [0.1]
+
+> type PendulumState = S.R 2
+
+> pendulumStateUpdate :: MonadRandom m => PendulumState -> m PendulumState
+> pendulumStateUpdate xPrev = do
+>   let x1Prev = fst $ S.headTail xPrev
+>       x2Prev = fst $ S.headTail $ snd $ S.headTail xPrev
+>   eta <- sample $ rvar (Normal 0.0 bigQ')
+>   let x1New = x1Prev + x2Prev * deltaT'
+>       x2New = x2Prev - g * sin (x1Prev * deltaT')
+>   undefined
+
+
+
+m0 = [1.6;0]; % Slightly off
+P0 = 0.1*eye(2);
+
+> pendulumSample :: MonadRandom m =>
+>              H.Vector Double ->
+>              m (Maybe ((H.Vector Double, H.Vector Double), H.Vector Double))
+> pendulumSample xPrev = do
+>   xNew <- sample $ rvar (Normal (bigA H.#> xPrev) bigQ)
+>   yNew <- sample $ rvar (Normal (bigH H.#> xNew) bigR)
+>   return $ Just ((xNew, yNew), xNew)
+
+> pendulumSamples :: [(H.Vector Double, H.Vector Double)]
+> pendulumSamples = evalState (ML.unfoldrM pendulumSample m0) (pureMT 17)
 
 
 Notes
@@ -699,6 +922,24 @@ Misellaneous
 
 > instance Pretty a => Pretty (SystemState a) where
 >   pPrint (SystemState x y xdot ydot ) = pPrint (x, y, xdot, ydot)
+
+> liftA4 :: Applicative f => (a -> b -> c -> d -> e) -> f a -> f b -> f c -> f d -> f e
+> liftA4 f a b c d = fmap f a <*> b <*> c <*> d
+
+> store :: Storable a => Store.Dictionary (SystemState a)
+> store =
+>   Store.run $
+>   liftA4 SystemState
+>   (Store.element xPos)
+>   (Store.element yPos)
+>   (Store.element _xSpd)
+>   (Store.element _ySpd)
+
+> instance (Storable a) => Storable (SystemState a) where
+>   sizeOf = Store.sizeOf store
+>   alignment = Store.alignment store
+>   peek = Store.peek store
+>   poke = Store.poke store
 
 Bibliography
 ============

@@ -11,7 +11,7 @@ Introduction
 
 This is a bit different from my usual posts (well apart from my write
 up of hacking at Odessa) in that it is a log of how I managed to get
-[LibBi] (http://libbi.org)(Library for Bayesian Inference) to run on my
+[LibBi](http://libbi.org) (Library for Bayesian Inference) to run on my
 MacBook and then not totally satisfactorily (as you will see if you
 read on).
 
@@ -24,16 +24,16 @@ disease. Individuals move from being susceptible ($S$) to infected
 ($I$) to recovered ($R$).
 
 $$
-\begin{eqnarray}
-\frac{dS}{dt} & = & - \delta S(t) I(t) \label{eq2a} \\
-\frac{dI}{dt} & = & \delta S(t) I(t) - \gamma I(t) \label{eq2b} \\
-\frac{dR}{dt} & = & \gamma I(t) . \label{eq2c}
-\end{eqnarray}
+\begin{aligned}
+\frac{dS}{dt} & = & - \delta S(t) I(t) & \\
+\frac{dI}{dt} & = & \delta S(t) I(t) - & \gamma I(t) \\
+\frac{dR}{dt} & = &                    & \gamma I(t)
+\end{aligned}
 $$
 
 In 1978, anonymous authors sent a note to the British Medical Journal
 reporting an influenza outbreak in a boarding school in the north of
-England (@bmj-influenza). The chart below shows the solution of the
+England @bmj-influenza. The chart below shows the solution of the
 SIR (Susceptible, Infected, Record) model with parameters which give
 roughly the results observed in the school.
 
@@ -290,7 +290,9 @@ I actually get a chart from this so some kind of success.
 This does *not* look like the chart in the @Moral2015, the fitted
 number of infected patients looks a lot smoother and the "rates"
 parameters also vary in a much smoother manner. For reasons I haven't
-yet investigated, it looks like over-fitting.
+yet investigated, it looks like over-fitting. Here's the charts in the paper.
+
+![](diagrams/PosteriorPaper.png)
 
 Bibliography
 ============

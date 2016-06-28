@@ -63,15 +63,17 @@ chartSirGen title acts obs ests = toRenderable layout
            $ def
 
 diagSirParticles :: String ->
+                    String ->
                     [(Double, Double)] ->
                     Diagram Cairo
-diagSirParticles t l =
-  fst $ runBackend denv (render (chartSirParticles t l) (600, 500))
+diagSirParticles t y l =
+  fst $ runBackend denv (render (chartSirParticles t y l) (600, 500))
 
 chartSirParticles :: String ->
+                     String ->
                      [(Double, Double)] ->
                      Renderable ()
-chartSirParticles title acts = toRenderable layout
+chartSirParticles title ytitle acts = toRenderable layout
   where
 
     actuals = plot_points_values .~ acts
@@ -81,7 +83,7 @@ chartSirParticles title acts = toRenderable layout
 
     layout = layout_title .~ title
            $ layout_plots .~ [toPlot actuals]
-           $ layout_y_axis . laxis_title .~ "Infected"
+           $ layout_y_axis . laxis_title .~ ytitle
            $ layout_y_axis . laxis_override .~ axisGridHide
            $ layout_x_axis . laxis_title .~ "Time"
            $ layout_x_axis . laxis_override .~ axisGridHide
@@ -118,5 +120,15 @@ main = do
       is = fst $ snd ys
       js = concat $ zipWith (\i ps -> zip (repeat i) ps) [0,1..] is
   displayHeader "diagrams/SirParts.png"
-                (diagSirParticles "Influenza Outbreak" js)
+                (diagSirParticles "Influenza Outbreak" "Infected" js)
+
+  let ds = fst $ snd $ snd $ snd ys
+      js = concat $ zipWith (\i ps -> zip (repeat i) ps) [0,1..] ds
+  displayHeader "diagrams/SirDeltaParts.png"
+                (diagSirParticles "Influenza Outbreak" "Infection Parameter" js)
+
+  let gs = snd $ snd $ snd $ snd ys
+      js = concat $ zipWith (\i ps -> zip (repeat i) ps) [0,1..] gs
+  displayHeader "diagrams/SirGammaParts.png"
+                (diagSirParticles "Influenza Outbreak" "Recovery Parameter" js)
   putStrLn "Hello"

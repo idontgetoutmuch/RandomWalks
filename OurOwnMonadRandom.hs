@@ -40,7 +40,7 @@ import Control.Monad.Primitive
 --     getRandomPrim PrimDouble            = getRandomDouble
 
 $(monadRandom [d|
-  instance (PrimMoad m, s ~ PrimState m) => MonadRandom (ReaderT (MWC.Gen s) m) where
+  instance (PrimMonad m, s ~ PrimState m) => MonadRandom (ReaderT (MWC.Gen s) m) where
     getRandomWord16 = ask >>= lift . MWC.uniform
     getRandomWord32 = ask >>= lift . MWC.uniform
     getRandomWord64 = ask >>= lift . MWC.uniform

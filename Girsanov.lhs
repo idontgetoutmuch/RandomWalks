@@ -94,15 +94,15 @@ $$
 
 Let's try this out.
 
-> biggerThan5' :: Double
-> biggerThan5' = sum (evalState xs (pureMT 42)) / (fromIntegral n)
+> biggerThan5' :: Double -> Double
+> biggerThan5' lower = sum (evalState xs (pureMT 42)) / (fromIntegral n)
 >   where
 >     xs :: MonadRandom m => m [Double]
 >     xs = liftM (map g) $
->          liftM (filter (>= 5.0)) $
->          liftM (map (+5)) $
+>          liftM (filter (>= lower)) $
+>          liftM (map (+lower)) $
 >          samples replicateM n
->     g x = exp $ (5^2 / 2) - 5 * x
+>     g x = exp $ (lower^2 / 2) - lower * x
 >     n = 100000
 
 

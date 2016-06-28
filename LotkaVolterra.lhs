@@ -14,8 +14,8 @@ model of a very simple predator-prey ecosystem.
 
 $$
 \begin{eqnarray}
-\frac{\mathrm{d}x}{\mathrm{d}t} & = & a_1 x  - a_2 xy \label{eq2a} \\
-\frac{\mathrm{d}y}{\mathrm{d}t} & = & b_2 xy - b_1 y \label{eq2b}
+\frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1  - c_1 N_1 N_2 \label{eq2a} \\
+\frac{\mathrm{d}N_2}{\mathrm{d}t} & = & c_2 N_1 N_2 - \rho_2 N2 \label{eq2b}
 \end{eqnarray}
 $$
 
@@ -27,325 +27,310 @@ species.
 
 ![](diagrams/HaresLynxes.png)
 
-> {-# OPTIONS_GHC -Wall                     #-}
-> {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
-> {-# OPTIONS_GHC -fno-warn-type-defaults   #-}
-> {-# OPTIONS_GHC -fno-warn-unused-do-bind  #-}
-> {-# OPTIONS_GHC -fno-warn-missing-methods #-}
-> {-# OPTIONS_GHC -fno-warn-orphans         #-}
+We can capture the fact that we do not have a complete model by
+describing our state of ignorance about the parameters. In order to
+keep this as simple as possible let us assume that log parameters
+undergo Brownian motion. That is, we know the parameters will jiggle
+around and the further into the future we look the less certain we are
+about what values they will have taken. By making the log parameters
+undergo Brownian motion, we can also capture our modelling assumption
+that birth, death and predation rates are always positive. A similar
+approach is taken in @Dureau2013 where the (log) parameters of an
+epidemiological model are taken to be Ornstein-Uhlenbeck processes
+(which is biologically more plausible although adds to the complexity
+of the model, something we wish to avoid in an example such as this).
 
-> {-# LANGUAGE BangPatterns                 #-}
-> {-# LANGUAGE DataKinds                    #-}
-> {-# LANGUAGE ExplicitForAll               #-}
+@Andrieu2010 propose a method to estimate the parameters of such
+models (Particle Marginal Metropolis Hastings aka PMMH) and the domain
+specific probabilistic language [LibBi](http://libbi.org/) (@Murray)
+can be used to apply this (and other inference methods).
 
-> module LotkaVolterra where
+For the sake of simplicity, in this blog post, we only model one
+parameter as being unknown and undergoing Brownian motion. A future
+blog post will consider more sophisticated scenarios.
 
-> import Numeric.GSL.ODE
-> import Numeric.LinearAlgebra hiding ( R, vector, matrix, sym )
+A Dynamical System Aside
+========================
 
-> import           Data.Random hiding ( StdNormal, Normal, gamma )
-> import           Data.Random.Source.PureMT ( pureMT )
-> import           Control.Monad.State ( evalState )
-> import           Control.Monad.Writer ( tell, WriterT, lift,
->                                         runWriterT
->                                       )
-> import           Numeric.LinearAlgebra.Static
->                  ( R, vector, Sym,
->                    headTail, matrix, sym
->                  )
-> import           GHC.TypeLits ( KnownNat )
-> import           MultivariateNormal ( MultivariateNormal(..) )
-> import qualified Data.Vector as V
-> import qualified Data.Vector.Storable as VS
-> import           Data.Bits ( shiftR )
-> import           Control.Parallel.Strategies
-
-
-> lvOde :: Double -> Double -> Double -> Double -> Double -> [Double] -> [Double]
-> lvOde a1 a2 b1 b2 _t [h, l] =
->   [
->     a1 * h - a2 * h * l
->   , b2 * h * l - b1 * l
->   ]
-> lvOde _a1 _a2 _b1 _b2 _t vars = error $ "lvOde called with: " ++ show (length vars) ++ " variable"
-
-> sirOde :: Double -> Double -> Double -> [Double] -> [Double]
-> sirOde delta gamma _t [s, i, _r] =
->   [
->     negate (delta * i * s)
->   , (delta * i * s) - (gamma * i)
->   , gamma * i
->   ]
-> sirOde _b _g _t vars = error $ "sirOde called with: " ++ show (length vars) ++ " variable"
-
-> delta, gamma :: Double
-> delta = 0.0026
-> gamma = 0.5
-
-> initS, initI, initR :: Double
-> initS = 762.0
-> initI = 1.0
-> initR = 0.01
-
-> a1, a2, b1, b2 :: Double
-
-a1 = 0.5
-a2 = 0.02
-b1 = 0.4
-b2 = 0.004
-
-> a1 = 0.7509811
-> a2 = 0.2133682
-> b1 = 0.6937935
-> b2 = 0.6497548
-
-> sol :: Matrix Double
-> sol = odeSolve (sirOde delta gamma) [initS, initI, initR] (fromList [0.0,deltaT..14.0])
-
-> solLv :: Matrix Double
-> solLv = odeSolve (lvOde a1 a2 b1 b2) [50.0, 50.0] (fromList [0.0,0.1..50])
-
-> nParticles :: Int
-> nParticles = 10000
-
-The usual Bayesian update step.
-
-> type Particles a = V.Vector a
-
-> oneFilteringStep ::
->   MonadRandom m =>
->   (Particles a -> m (Particles a)) ->
->   (Particles a -> Particles b) ->
->   (b -> b -> Double) ->
->   Particles a ->
->   b ->
->   WriterT [Particles a] m (Particles a)
-> oneFilteringStep stateUpdate obsUpdate weight statePrevs obs = do
->   tell [statePrevs]
->   stateNews <- lift $ stateUpdate statePrevs
->   let obsNews = obsUpdate stateNews
->   let weights       = V.map (weight obs) obsNews
->       cumSumWeights = V.tail $ V.scanl (+) 0 weights
->       totWeight     = V.last cumSumWeights
->   vs <- lift $ V.replicateM nParticles (sample $ uniform 0.0 totWeight)
->   let js = indices cumSumWeights vs
->       stateTildes = V.map (stateNews V.!) js
->   return stateTildes
-
-> data SystemState a = SystemState { stateS     :: a
->                                  , stateI     :: a
->                                  , stateR     :: a
->                                  , stateDelta  :: a
->                                  , stateGamma :: a
->                                  }
->   deriving Show
-
-> deltaT :: Double
-> deltaT = 1.0
-
-> stateUpdate :: Particles (SystemState Double) ->
->                Particles (SystemState Double)
-> stateUpdate xPrevs =
->   V.zipWith5 SystemState ss is rs deltas gammas
->   where
->     sPrevs     = V.map stateS     xPrevs
->     iPrevs     = V.map stateI     xPrevs
->     rPrevs     = V.map stateR     xPrevs
->     deltaPrevs  = V.map stateDelta  xPrevs
->     gammaPrevs = V.map stateGamma xPrevs
->
->     f b g xs = odeSolve (sirOde b g) xs
->                (0.0 `VS.cons` (deltaT `VS.cons` VS.empty))
->
->     ms :: V.Vector (Matrix Double)
->     ms = V.zipWith3 f deltaPrevs gammaPrevs
->                       (V.zipWith3 (\s i r -> [s, i, r]) sPrevs iPrevs rPrevs)
->
->     ns :: V.Vector (VS.Vector Double)
->     ns = V.map (\m -> (toRows m)!!1) ms
->
->     ss     = V.map (VS.! 0) ns
->     is     = V.map (VS.! 1) ns
->     rs     = V.map (VS.! 2) ns
->     deltas  = deltaPrevs
->     gammas = gammaPrevs
-
-
-
-> (.+) :: (Num a) => V.Vector a -> V.Vector a -> V.Vector a
-> (.+) = V.zipWith (+)
-
-> stateUpdateNoisy :: MonadRandom m =>
->                     Sym 5 ->
->                     Particles (SystemState Double) ->
->                     m (Particles (SystemState Double))
-> stateUpdateNoisy bigQ xPrevs = do
->   let xs = stateUpdate xPrevs
->
->       sPrevs :: V.Vector Double
->       sPrevs     = V.map stateS     xs
->       iPrevs     = V.map stateI     xs
->       rPrevs     = V.map stateR     xs
->       deltaPrevs = V.map stateDelta xs
->       gammaPrevs = V.map stateGamma xs
->
->   let mus :: V.Vector (R 5)
->       mus = V.zipWith5 (\a b c d e -> vector (map log [a, b, c, d, e]))
->                        sPrevs iPrevs rPrevs deltaPrevs gammaPrevs
->
->   nus <- mapM (\mu -> fmap exp $ sample $ rvar (MultivariateNormal mu bigQ)) mus
->
->   let nu1s, nu2s, nu3s, nu4s, nu5s :: V.Vector Double
->       nu1s = V.map (fst . headTail) nus
->       nu2s = V.map (fst . headTail . snd . headTail) nus
->       nu3s = V.map (fst . headTail . snd . headTail . snd . headTail) nus
->       nu4s = V.map (fst . headTail . snd . headTail . snd . headTail .
->                     snd . headTail) nus
->       nu5s = V.map (fst . headTail . snd . headTail . snd . headTail .
->                     snd . headTail . snd . headTail) nus
->
->   return (V.zipWith5 SystemState nu1s nu2s nu3s nu4s nu5s)
-
-> newtype SystemObs a = SystemObs { obsI  :: a }
->   deriving Show
-
-> obsUpdate :: Particles (SystemState Double) ->
->              Particles (SystemObs Double)
-> obsUpdate xs = V.map (SystemObs . stateI) xs
-
-> priorMu :: R 5
-> priorMu = vector [log initS, log initI, log initR, log {- 0.005 -} delta, log {- 0.4 -} gamma]
-
-> bigP :: Sym 5
-> bigP = sym $ matrix [
->     1e-6, 0.0, 0.0, 0.0, 0.0
->   , 0.0, 1e-6, 0.0, 0.0, 0.0
->   , 0.0, 0.0, 1e-6, 0.0, 0.0
->   , 0.0, 0.0, 0.0, 5e-3, 0.0
->   , 0.0, 0.0, 0.0, 0.0, 5e-3
->   ]
-
-> initParticles :: MonadRandom m =>
->                  m (Particles (SystemState Double))
-> initParticles = V.replicateM nParticles $ do
->   r <- sample $ rvar (MultivariateNormal priorMu bigP)
->   let x1 = exp $ fst $ headTail r
->       x2 = exp $ fst $ headTail $ snd $ headTail r
->       x3 = exp $ fst $ headTail $ snd $ headTail $ snd $ headTail r
->       x4 = exp $ fst $ headTail $ snd $ headTail $ snd $ headTail $
->            snd $ headTail r
->       x5 = exp $ fst $ headTail $ snd $ headTail $ snd $ headTail $
->            snd $ headTail $ snd $ headTail r
->   return $ SystemState { stateS = x1, stateI = x2, stateR = x3,
->                          stateDelta = x4, stateGamma = x5}
-
-> gens :: [[Double]]
-> gens = map toList $ toRows $ tr sol
-
-> obs :: [Double]
-> -- obs = [3, 8, 28, 75, 221, 291, 255, 235, 190, 125, 70, 28, 12, 5]
-> obs  = gens!!1
-
-> bigR :: Sym 1
-> bigR  = sym $ matrix [2.0]
-
-> bigQ :: Sym 5
-> bigQ = sym $ matrix
->        [ 1e-4, 0.0, 0.0, 0.0, 0.0
->        , 0.0, 1e-4, 0.0, 0.0, 0.0
->        , 0.0, 0.0, 1e-4, 0.0, 0.0
->        , 0.0, 0.0, 0.0, 1e-3, 0.0
->        , 0.0, 0.0, 0.0, 0.0, 1e-2
->        ]
-
-> weight :: forall a n . KnownNat n =>
->           (a -> R n) ->
->           Sym n ->
->           a -> a -> Double
-> weight f bigR obs obsNew = pdf (MultivariateNormal (f obsNew) bigR) (f obs)
-
-> runFilter :: [Particles (SystemState Double)]
-> runFilter = snd $ evalState action (pureMT 19)
->   where
->     action = runWriterT $ do
->       xs <- lift $ initParticles
->       V.foldM
->         (oneFilteringStep (stateUpdateNoisy bigQ) obsUpdate (weight f bigR))
->         xs
->         (V.fromList $ map SystemObs obs)
-
-> testFiltering :: [Double]
-> testFiltering = map ((/ (fromIntegral nParticles)). sum . V.map stateGamma) runFilter
-
-> testFilteringF :: (([Double], [Double]), [Double])
-> testFilteringF = ((s, i), r)
->   where
->     ps = runFilter
->     s = map ((/ (fromIntegral nParticles)). sum . V.map stateS) ps
->     i = map ((/ (fromIntegral nParticles)). sum . V.map stateI) ps
->     r = map ((/ (fromIntegral nParticles)). sum . V.map stateR) ps
-
-> type ParticleStream = [[Double]]
-
-> testFilteringS ::
->   (ParticleStream, (ParticleStream, (ParticleStream, (ParticleStream, ParticleStream))))
-> testFilteringS = (s, (i, (r, (d, g))))
->   where
->     ps = runFilter
->     s = map (take 200 . V.toList . V.map stateS) ps
->     i = map (take 200 . V.toList . V.map stateI) ps
->     r = map (take 200 . V.toList . V.map stateR) ps
->     d = map (take 200 . V.toList . V.map stateDelta) ps
->     g = map (take 200 . V.toList . V.map stateGamma) ps
-
-Notes
-=====
-
-Helpers for Converting Types
-----------------------------
-
-> f :: SystemObs Double -> R 1
-> f = vector . pure . obsI
-
-
-Helpers for the Inverse CDF
----------------------------
-
-That these are helpers for the inverse CDF is delayed to another blog
-post.
-
-> indices :: V.Vector Double -> V.Vector Double -> V.Vector Int
-> indices bs xs = V.map (binarySearch bs) xs
-
-> binarySearch :: (Ord a) =>
->                 V.Vector a -> a -> Int
-> binarySearch vec x = loop 0 (V.length vec - 1)
->   where
->     loop !l !u
->       | u <= l    = l
->       | otherwise = let e = vec V.! k in if x <= e then loop l k else loop (k+1) u
->       where k = l + (u - l) `shiftR` 1
-
-The Model Expanded
-------------------
+The above dynamical system is structurally unstable (more on this in a
+future post), a possible indication that it should not be considered
+as a good model of predator–prey interaction. Let us modify this to
+include carrying capacities for the populations of both species.
 
 $$
 \begin{eqnarray}
-\frac{\mathrm{d}x}{\mathrm{d}t} & = & \beta_{11} x  - \beta_{12} xy \\
-\frac{\mathrm{d}y}{\mathrm{d}t} & = & \beta_{22} xy - \beta_{21} y \\
-\frac{\mathrm{d}\beta_{11}}{\mathrm{d}t} & = & \theta_{{11}}\mathrm{d}W_{{11}}(t) \\
-\frac{\mathrm{d}\beta_{12}}{\mathrm{d}t} & = & \theta_{{12}}\mathrm{d}W_{{12}}(t) \\
-\frac{\mathrm{d}\beta_{21}}{\mathrm{d}t} & = & \theta_{{21}}\mathrm{d}W_{{21}}(t) \\
-\frac{\mathrm{d}\beta_{22}}{\mathrm{d}t} & = & \theta_{{22}}\mathrm{d}W_{{22}}(t)
+\frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1 \bigg(1 - \frac{N_1}{K_1}\bigg) - c_1 N_1 N_2 \\
+\frac{\mathrm{d}N_2}{\mathrm{d}t} & = & -\rho_2 N_2 \bigg(1 + \frac{N_2}{K_2}\bigg) + c_2 N_1 N_2
 \end{eqnarray}
 $$
 
-LibBi
------
+Data Generation with LibBi
+==========================
 
-~~~~{.CPP include="LV.bi"}
+Let's generate some data using LibBi.
+
+~~~~{.CPP include="PP.bi"}
 ~~~~
 
+![](diagrams/LVdata.png)
+
+We can look at phase space starting with different populations and see
+they all converge to the same fixed point.
+
+![](diagrams/PPviaLibBi.png)
+
+
+Data Generation with Haskell
+============================
+
+Since at some point in the future, I plan to produce Haskell versions
+of the methods given in @Andrieu2010, let's generate the data using
+Haskell.
+
+> {-# OPTIONS_GHC -Wall                     #-}
+> {-# OPTIONS_GHC -fno-warn-name-shadowing  #-}
+
+> module LotkaVolterra (
+>     solLv
+>   , solPp
+>   , h0
+>   , l0
+>   , baz
+>   , logBM
+>   , eulerEx
+>   )where
+
+> import Numeric.GSL.ODE
+> import Numeric.LinearAlgebra
+
+> import Data.Random.Source.PureMT
+> import Data.Random hiding ( gamma )
+> import Control.Monad.State
+
+Here's the unstable model.
+
+> lvOde :: Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          [Double] ->
+>          [Double]
+> lvOde rho1 c1 rho2 c2 _t [h, l] =
+>   [
+>     rho1 * h - c1 * h * l
+>   , c2 * h * l - rho2 * l
+>   ]
+> lvOde _rho1 _c1 _rho2 _c2 _t vars =
+>   error $ "lvOde called with: " ++ show (length vars) ++ " variable"
+
+> rho1, c1, rho2, c2 :: Double
+> rho1 = 0.5
+> c1 = 0.02
+> rho2 = 0.4
+> c2 = 0.004
+
+> deltaT :: Double
+> deltaT = 0.1
+
+> solLv :: Matrix Double
+> solLv = odeSolve (lvOde rho1 c1 rho2 c2)
+>                  [50.0, 50.0]
+>                  (fromList [0.0, deltaT .. 50])
+
+![](diagrams/LV.png)
+
+And here's the stable model.
+
+> ppOde :: Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          Double ->
+>          [Double] ->
+>          [Double]
+> ppOde a k1 b d k2 c _t [p, z] =
+>   [
+>     a * p * (1 - p / k1) - b * p * z
+>   , -d * z * (1 + z / k2) + c * p * z
+>   ]
+> ppOde _a _k1 _b _d _k2 _c _t vars =
+>   error $ "ppOde called with: " ++ show (length vars) ++ " variable"
+
+> a, k1, b, d, k2, c :: Double
+> a = 0.5
+> k1 = 200.0
+> b = 0.02
+> d = 0.4
+> k2 = 50.0
+> c = 0.004
+
+> solPp :: Double -> Double -> Matrix Double
+> solPp x y = odeSolve (ppOde a k1 b d k2 c)
+>                  [x, y]
+>                  (fromList [0.0, deltaT .. 50])
+
+> gamma, alpha, beta :: Double
+> gamma = d / a
+> alpha = a / (c * k1)
+> beta  = d / (a * k2)
+
+> fp :: (Double, Double)
+> fp = ((gamma + beta) / (1 + alpha * beta), (1 - gamma * alpha) / (1 + alpha * beta))
+
+> h0, l0 :: Double
+> h0 = a * fst fp / c
+> l0 = a * snd fp / b
+
+> foo, bar :: Matrix R
+> foo = matrix 2 [a / k1, b, c, negate d / k2]
+> bar = matrix 1 [a, d]
+
+> baz :: Maybe (Matrix R)
+> baz = linearSolve foo bar
+
+This gives a stable fixed point of
+
+    [ghci]
+    baz
+
+Here's an example of convergence to that fixed point in phase space.
+
+![](diagrams/PP.png)
+
+The Stochastic Model
+--------------------
+
+Let us now assume that the Hare growth parameter undergoes Brownian
+motion so that the further into the future we go, the less certain we
+are about it. In order to ensure that this parameter remains positive,
+let's model the log of it to be Brownian motion.
+
+$$
+\begin{eqnarray}
+\frac{\mathrm{d}N_1}{\mathrm{d}t} & = & \rho_1 N_1 \bigg(1 - \frac{N_1}{K_1}\bigg) - c_1 N_1 N_2 \\
+\frac{\mathrm{d}N_2}{\mathrm{d}t} & = & -\rho_2 N_2 \bigg(1 + \frac{N_2}{K_2}\bigg) + c_2 N_1 N_2 \\
+\mathrm{d} \rho_1 & = & \rho_1 \sigma_{\rho_1} \mathrm{d}W_t
+\end{eqnarray}
+$$
+
+where the final equation is a stochastic differential equation with
+$W_t$ being a Wiener process.
+
+By Itô we have
+
+$$
+\mathrm{d} (\log{\rho_1}) = - \frac{\sigma_{\rho_1}^2}{2} \mathrm{d} t + \sigma_{\rho_1} \mathrm{d}W_t
+$$
+
+We can use this to generate paths for $\rho_1$.
+
+$$
+\rho_1(t + \Delta t) = \rho_1(t)\exp{\bigg(- \frac{\sigma_{\rho_1}^2}{2} \Delta t + \sigma_{\rho_1} \sqrt{\Delta t} Z\bigg)}
+$$
+
+where $Z \sim {\mathcal{N}}(0,1)$.
+
+> oneStepLogBM :: MonadRandom m => Double -> Double -> Double -> m Double
+> oneStepLogBM deltaT sigma rhoPrev = do
+>   x <- sample $ rvar StdNormal
+>   return $ rhoPrev * exp(sigma * (sqrt deltaT) * x - 0.5 * sigma * sigma * deltaT)
+
+> iterateM :: Monad m => (a -> m a) -> m a -> Int -> m [a]
+> iterateM f mx n = sequence . take n . iterate (>>= f) $ mx
+
+> logBMM :: MonadRandom m => Double -> Double -> Int -> Int -> m [Double]
+> logBMM initRho sigma n m =
+>   iterateM (oneStepLogBM (recip $ fromIntegral n) sigma) (return initRho) (n * m)
+
+> logBM :: Double -> Double -> Int -> Int -> Int -> [Double]
+> logBM initRho sigma n m seed =
+>   evalState (logBMM initRho sigma n m) (pureMT $ fromIntegral seed)
+
+We can see the further we go into the future the less certain we are
+about the value of the parameter.
+
+![](diagrams/LogBrownianPaths.png)
+
+Using this we can simulate the whole dynamical system which is now a
+stochastic process.
+
+> f1, f2 :: Double -> Double -> Double ->
+>           Double -> Double ->
+>           Double
+> f1 a k1 b p z = a * p * (1 - p / k1) - b * p * z
+> f2 d k2 c p z = -d * z * (1 + z / k2) + c * p * z
+
+> oneStepEuler :: MonadRandom m =>
+>                 Double ->
+>                 Double ->
+>                 Double -> Double ->
+>                 Double -> Double -> Double ->
+>                 (Double, Double, Double) ->
+>                 m (Double, Double, Double)
+> oneStepEuler deltaT sigma k1 b d k2 c (rho1Prev, pPrev, zPrev) = do
+>     let pNew = pPrev + deltaT * f1 (exp rho1Prev) k1 b pPrev zPrev
+>     let zNew = zPrev + deltaT * f2 d k2 c pPrev zPrev
+>     rho1New <- oneStepLogBM deltaT sigma rho1Prev
+>     return (rho1New, pNew, zNew)
+
+> euler :: MonadRandom m =>
+>          (Double, Double, Double) ->
+>          Double ->
+>          Double -> Double ->
+>          Double -> Double -> Double ->
+>          Int -> Int ->
+>          m [(Double, Double, Double)]
+> euler stateInit sigma k1 b d k2 c n m =
+>   iterateM (oneStepEuler (recip $ fromIntegral n) sigma k1 b d k2 c)
+>            (return stateInit)
+>            (n * m)
+
+> eulerEx :: (Double, Double, Double) ->
+>            Double -> Int -> Int -> Int ->
+>            [(Double, Double, Double)]
+> eulerEx stateInit sigma n m seed =
+>   evalState (euler stateInit sigma k1 b d k2 c n m) (pureMT $ fromIntegral seed)
+
+We see that the populations become noisier the further into the future
+we go.
+
+![](diagrams/StochPaths.png)
+
+Notice that the second order effects of the system are now to some
+extent captured by the fact that the growth rate of Hares can
+drift. In our simulation, this is demonstrated by our decreasing lack
+of knowledge the further we look into the future.
+
+Inference
+=========
+
+Now let us infer the growth rate using PMMH. Here's the model
+expressed in LibBi.
+
+~~~~{.CPP include="PPInfer.bi"}
+~~~~
+
+Let's look at the posteriors of the hyper-parameters for the Hare
+growth parameter.
+
+![](diagrams/LvPosterior.png)
+
+The estimate for $\mu$ is pretty decent. For our generated data,
+$\sigma =0$ and given our observations are quite noisy maybe the
+estimate for this is not too bad also.
+
+Appendix: The R Driving Code
+============================
+
+All code including the R below can be downloaded from
+[github](https://github.com/idontgetoutmuch/RandomWalks) but make sure
+you use the *straight-libbi* branch and *not* master.
+
+~~~~{.CPP include="PZ.R"}
+~~~~
 
 Bibliography
 ============

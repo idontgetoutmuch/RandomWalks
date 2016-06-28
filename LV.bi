@@ -6,12 +6,12 @@ model LV {
   const epsilon   = 2.0e-2; // observation error tolerance
 
   dim s(2); // number of species
-  dim n(2); // number of parameters for each species process
+  dim p(2); // number of parameters for each species process
 
-  param mu[s,n];      // mean of birth and death rates
-  param sigma[s,n];   // volatility of birth and death rates
-  noise w[s,n];       // noise terms
-  state ln_beta[s,n]; // birth and death rates
+  param mu[s,p];      // mean of birth and death rates
+  param sigma[s,p];   // volatility of birth and death rates
+  noise w[s,p];       // noise terms
+  state ln_beta[s,p]; // birth and death rates
   state H, L;         // hares, lynxes
   obs y_H, y_L;       // observations
 
@@ -28,25 +28,25 @@ model LV {
   }
 
   sub proposal_parameter {
-    mu[s,n] ~ truncated_gaussian(mu[s,n], 0.02, 0.0, 1.0);
-    sigma[s,n] ~ truncated_gaussian(sigma[s,n], 0.01, 0.0, 0.5);
+    mu[s,p] ~ truncated_gaussian(mu[s,p], 0.02, 0.0, 1.0);
+    sigma[s,p] ~ truncated_gaussian(sigma[s,p], 0.01, 0.0, 0.5);
   }
 
   // Starting populations of 50 hares and 50 lynxes.
   sub initial {
-    param beta[s,n];
+    param beta[s,p];
     H ~ log_normal(log(50.0), 0.5);
     L ~ log_normal(log(50.0), 0.5);
-    beta[s,n] ~ gaussian(mu[s,n], sigma[s,n]);
+    beta[s,p] ~ gaussian(mu[s,p], sigma[s,p]);
     ln_beta <- log(beta);
   }
 
   sub transition(delta = h) {
-    w[s,n] ~ normal(0.0, sqrt(h));
+    w[s,p] ~ normal(0.0, sqrt(h));
     ode(h = h, atoler = delta_abs, rtoler = delta_rel, alg = 'RK4(3)') {
       dH/dt = exp(ln_beta[0,0]) * H - exp(ln_beta[0,1]) * H * L;
       dL/dt = exp(ln_beta[1,1]) * H * L - exp(ln_beta[1,0]) * L;
-      dln_beta[s,n]/dt = -sigma[s,n] * sigma[s,n] / 2 - sigma[s,n] * w[s,n] / h;
+      dln_beta[s,p]/dt = -sigma[s,p] * sigma[s,p] / 2 - sigma[s,p] * w[s,p] / h;
     }
   }
 

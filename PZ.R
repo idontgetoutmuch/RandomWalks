@@ -1,6 +1,6 @@
 install.packages("devtools")
 library(devtools)
-install_github("sbfnk/RBi",ref="master")
+install_github("libbi/RBi",ref="master")
 install_github("sbfnk/RBi.helpers",ref="master")
 
 rm(list = ls(all.names=TRUE))
@@ -43,6 +43,14 @@ ggplot(df, aes(rdata_PP$P$nr, y = Population, color = variable), size = 0.1) +
           axis.title=element_text(size=6,face="bold")) +
     theme(plot.title = element_text(size=10))
 ggsave(filename="diagrams/LVdata.png",width=4,height=3)
+
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+lvStanModel <- stan_model(file = "SHO.stan",verbose=TRUE)
+
+
 
 synthetic_dataset_PP1 <- bi_generate_dataset(endtime=endTime,
                                              model=PP,

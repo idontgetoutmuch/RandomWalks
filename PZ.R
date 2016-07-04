@@ -50,7 +50,20 @@ options(mc.cores = parallel::detectCores())
 
 lvStanModel <- stan_model(file = "SHO.stan",verbose=TRUE)
 
+lvFit <- sampling(lvStanModel,
+                  seed=42,
+                  data=list(T = length(rdata_PP$P_obs$value),
+                            y = rdata_PP$P_obs$value,
+                            k1 = 2.0e2,
+                            b  = 2.0e-2,
+                            d  = 4.0e-1,
+                            k2 = 2.0e1,
+                            c  = 4.0e-3,
+                            deltaT = rdata_PP$P_obs$time[2] - rdata_PP$P_obs$time[1]
+                            ),
+                   chains=1)
 
+samples <- extract(lvFit)
 
 synthetic_dataset_PP1 <- bi_generate_dataset(endtime=endTime,
                                              model=PP,
@@ -99,11 +112,11 @@ bi_object_PP <- libbi(client="sample", model=PPInfer, obs = synthetic_dataset_PP
 bi_object_PP$run(add_options = list(
                      "end-time" = endTime,
                      noutputs = endTime,
-                     nsamples = 4000,
+                     nsamples = 2000,
                      nparticles = 128,
                      seed=42,
                      nthreads = 1),
-                 ## verbose = TRUE,
+                 verbose = TRUE,
                  stdoutput_file_name = tempfile(pattern="pmmhoutput", fileext=".txt"))
 
 bi_file_summary(bi_object_PP$result$output_file_name)

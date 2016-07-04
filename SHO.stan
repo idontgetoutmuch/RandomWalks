@@ -1,62 +1,66 @@
 functions {
-    real[] lv(real t,real[] y,real[] theta,real[] x_r,int[] x_i) {
-    real dydt[3];
+  real f1 (real a, real k1, real b, real p, real z) {
+    real q;
 
-    dydt[1] =  exp(y[3]) * y[1] * (1 - y[1] / x_r[1]) - x_r[2] * y[1] * y[2];
-    dydt[2] = -x_r[3] * y[2] * (1 + y[2] / x_r[4]) + x_r[5] * y[1] * y[2];
-    dydt[3] = -theta[1] * theta[1] * 0.5 - theta[1] * x_r[6] / x_r[7];
+    q = a * p * (1 - p / k1) - b * p * z;
+    return q;
+  }
 
-    return dydt;
-    }
+  real f2 (real d, real k2, real c, real p, real z) {
+    real q;
+
+    q = -d * z * (1 + z / k2) + c * p * z;
+    return q;
+  }
 }
 
 data {
-  int<lower=1> T;
-  int<lower=0> N;
-  real t0;
-  real ts[T];
-  matrix[T,N] y;
+  int<lower=1> T;   // Number of observations
+  real y[T];        // Observed hares
   real k1;          // Hare carrying capacity
   real b;           // Hare death rate per lynx
   real d;           // Lynx death rate
   real k2;          // Lynx carrying capacity
   real c;           // Lynx birth rate per hare
-  real p;           // Initial hares
-  real l;           // Initial lynxes
-  real h;           // Time step
-}
-
-transformed data {
-  real x_r[7];
-  int x_i[0];
-
-  x_r[1] = k1;
-  x_r[2] = b;
-  x_r[3] = d;
-  x_r[4] = k2;
-  x_r[5] = c;
-  x_r[6] = 1; // FIXME
-  x_r[7] = h;
+  real deltaT;      // Time step
 }
 
 parameters {
-      real<lower=0> theta[1];
-      real<lower=0> sigma_y;
-      real<lower=0> y0[3];
+  real<lower=0> mu;
+  real<lower=0> sigma;
+  real<lower=0> p0;
+  real<lower=0> z0;
+  real<lower=0> rho0;
+  real w[T];
 }
 
 transformed parameters {
-  real y_hat[T,3];
-  y_hat = integrate_ode_rk45(lv, y0, t0, ts, theta, x_r, x_i);
+  real<lower=0> p[T];
+  real<lower=0> z[T];
+  real<lower=0> rho[T];
+
+  p[1] = p0;
+  z[1] = z0;
+  rho[1] = rho0;
+
+  for (t in 1:(T-1)){
+    p[t+1] = p[t] + deltaT * f1 (exp(rho[t]), k1, b, p[t], z[t]);
+    z[t+1] = z[t] + deltaT * f2 (d, k2, c, p[t], z[t]);
+
+    rho[t+1] = rho[t] * exp(sigma * sqrt(deltaT) * w[t] - 0.5 * sigma * sigma * deltaT);
+  }
 }
 
 model {
-  sigma_y ~ cauchy(0,1);
-  theta ~ normal(0,2);
-  y0 ~ normal(5,2);
-  for (i in 1:N){
-    for (t in 1:T) {
-          y[t,i] ~ normal(y_hat[t,1],sigma_y);
-      }
+  mu    ~ uniform(0.0,1.0);
+  sigma ~ uniform(0.0, 0.5);
+  p0    ~ lognormal(log(100.0), 0.2);
+  z0    ~ lognormal(log(50.0), 0.1);
+  rho0  ~ normal(log(mu), sigma);
+  w     ~ normal(0.0,1.0);
+
+  for (t in 1:T) {
+    y[t] ~ lognormal(log(p[t]),0.1);
   }
 }
+
